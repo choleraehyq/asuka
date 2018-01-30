@@ -1,0 +1,17 @@
+syntax = "proto3";
+package storagepb;
+
+import "gogoproto/gogo.proto";
+
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.sizer_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
+message KVPair {
+    bytes key = 1;
+    bytes value = 2;
+}
+
+message Snapshot {
+    repeated KVPair data = 1;
+}
