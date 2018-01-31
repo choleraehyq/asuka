@@ -1,0 +1,117 @@
+syntax = "proto3";
+
+package datapb;
+
+import "gogoproto/gogo.proto";
+import "configpb/configpb.proto";
+import "errorpb/errorpb.proto";
+import "storagepb/storagepb.proto";
+
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.sizer_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+option (gogoproto.goproto_enum_prefix_all) = false;
+
+message GetReq {
+    bytes key = 1;
+}
+
+message GetResp {
+    bytes value = 1;
+    errorpb.Error error = 2;
+}
+
+message SetReq {
+    storagepb.KVPair pair = 1 [(gogoproto.nullable) = false];
+}
+
+message SetResp {
+    errorpb.Error error = 1;
+}
+
+message Log {
+    bytes key = 1;
+    bytes old_value = 2;
+    bytes new_value = 3;
+}
+
+message AppendLogReq {
+    configpb.ConfigNo group_no = 1 [(gogoproto.nullable) = false];
+    uint64 sn = 2;
+    Log log = 3;
+}
+
+message AppendLogResp {
+    configpb.ConfigNo group_no = 1 [(gogoproto.nullable) = false];
+    uint64 sn = 3;
+}
+
+message HeartbeatReq {
+    configpb.ConfigNo group_no = 1 [(gogoproto.nullable) = false];
+}
+
+message HeartbeatResp {
+    configpb.ConfigNo group_no = 1 [(gogoproto.nullable) = false];
+    errorpb.Error error = 2;
+}
+
+message GetLatestSnapshotReq {
+    configpb.ConfigNo group_no = 1 [(gogoproto.nullable) = false];
+    configpb.KeyRange range = 2 [(gogoproto.nullable) = false];
+}
+
+message GetLatestSnapshotResp {
+    configpb.ConfigNo group_no = 1 [(gogoproto.nullable) = false];
+    storagepb.Snapshot snapshot = 2;
+    errorpb.Error error = 3;
+}
+
+message GetLogReq {
+    configpb.ConfigNo group_no = 1 [(gogoproto.nullable) = false];
+    uint64 sn = 2;
+}
+
+message GetLogResp {
+    configpb.ConfigNo group_no = 1 [(gogoproto.nullable) = false];
+    uint64 sn = 2;
+    Log log = 3;
+    errorpb.Error error = 4;
+}
+
+// the reason causes this group change
+enum GroupChangeType {
+    ADD_NODE = 0;
+    REMOVE_NODE = 1;
+    NEED_SPLIT = 2;
+    DO_SPLIT = 3;
+}
+
+message GroupChangeReq {
+    configpb.GroupInfo new_group_info = 1;
+    GroupChangeType reason = 2;
+}
+
+message GroupChangeResp {
+    configpb.GroupInfo new_group_info = 1;
+    errorpb.Error error = 2;
+}
+
+message MetaServerChangeReq {
+    repeated configpb.NodeAddress new_meta_list = 1;
+}
+
+message MetaServerChangeResp {
+    repeated configpb.NodeAddress new_meta_list = 1;
+    errorpb.Error error = 2;
+}
+
+service DataService {
+    rpc Get(GetReq) returns (GetResp);
+    rpc Set(SetReq) returns (SetResp);
+    rpc AppendLog(AppendLogReq) returns (AppendLogResp);
+    rpc Heartbeat(HeartbeatReq) returns (HeartbeatResp);
+    rpc GetLatestSnapshot(GetLatestSnapshotReq) returns (GetLatestSnapshotResp);
+    rpc GetLog(GetLogReq) returns (GetLogResp);
+    rpc GroupChange(GroupChangeReq) returns (GroupChangeResp);
+    rpc MetaServerChange(MetaServerChangeReq) returns (MetaServerChangeResp);
+}

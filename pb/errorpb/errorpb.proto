@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package errorpb;
+
+import "gogoproto/gogo.proto";
+import "configpb/configpb.proto";
+
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.sizer_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+option (gogoproto.goproto_enum_prefix_all) = false;
+
+message NotLeader {
+    configpb.ConfigNo group_no = 1 [(gogoproto.nullable) = false];
+    configpb.NodeAddress leader = 2 [(gogoproto.nullable) = false];
+}
+
+message NodeNotFound {
+    configpb.NodeAddress node = 1 [(gogoproto.nullable) = false];
+}
+
+message KeyNotInRange {
+    bytes key = 1;
+    configpb.KeyRange range = 2 [(gogoproto.nullable) = false];
+}
+
+message KeyNotFound {
+    bytes key = 1;
+}
+
+message StaleEpoch {
+    configpb.ConfigNo current_no = 1 [(gogoproto.nullable) = false];
+}
+
+message Other {}
+
+message OK {}
+
+message Error {
+    string message  = 1;
+    oneof error_type {
+        OK ok = 2;
+        NotLeader not_leader = 3;
+        NodeNotFound node = 4;
+        KeyNotInRange key_range = 5;
+        KeyNotFound key_not_found = 6;
+        StaleEpoch stale_epoch = 7;
+        Other other = 8;
+    }
+}
