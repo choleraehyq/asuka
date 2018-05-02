@@ -10,11 +10,11 @@
 	It has these top-level messages:
 		NotLeader
 		NodeNotFound
-		KeyNotInRange
 		KeyNotFound
+		GroupNotFound
 		StaleEpoch
+		SnTooHigh
 		Other
-		OK
 		Error
 */
 package errorpb
@@ -23,7 +23,7 @@ import proto "github.com/golang/protobuf/proto"
 import fmt "fmt"
 import math "math"
 import _ "github.com/gogo/protobuf/gogoproto"
-import configpb "configpb"
+import configpb "github.com/choleraehyq/asuka/pb/configpb"
 
 import io "io"
 
@@ -39,8 +39,7 @@ var _ = math.Inf
 const _ = proto.ProtoPackageIsVersion2 // please upgrade the proto package
 
 type NotLeader struct {
-	GroupNo configpb.ConfigNo    `protobuf:"bytes,1,opt,name=group_no,json=groupNo" json:"group_no"`
-	Leader  configpb.NodeAddress `protobuf:"bytes,2,opt,name=leader" json:"leader"`
+	Leader string `protobuf:"bytes,1,opt,name=leader,proto3" json:"leader,omitempty"`
 }
 
 func (m *NotLeader) Reset()                    { *m = NotLeader{} }
@@ -48,22 +47,15 @@ func (m *NotLeader) String() string            { return proto.CompactTextString(
 func (*NotLeader) ProtoMessage()               {}
 func (*NotLeader) Descriptor() ([]byte, []int) { return fileDescriptorErrorpb, []int{0} }
 
-func (m *NotLeader) GetGroupNo() configpb.ConfigNo {
-	if m != nil {
-		return m.GroupNo
-	}
-	return configpb.ConfigNo{}
-}
-
-func (m *NotLeader) GetLeader() configpb.NodeAddress {
+func (m *NotLeader) GetLeader() string {
 	if m != nil {
 		return m.Leader
 	}
-	return configpb.NodeAddress{}
+	return ""
 }
 
 type NodeNotFound struct {
-	Node configpb.NodeAddress `protobuf:"bytes,1,opt,name=node" json:"node"`
+	Node string `protobuf:"bytes,1,opt,name=node,proto3" json:"node,omitempty"`
 }
 
 func (m *NodeNotFound) Reset()                    { *m = NodeNotFound{} }
@@ -71,35 +63,11 @@ func (m *NodeNotFound) String() string            { return proto.CompactTextStri
 func (*NodeNotFound) ProtoMessage()               {}
 func (*NodeNotFound) Descriptor() ([]byte, []int) { return fileDescriptorErrorpb, []int{1} }
 
-func (m *NodeNotFound) GetNode() configpb.NodeAddress {
+func (m *NodeNotFound) GetNode() string {
 	if m != nil {
 		return m.Node
 	}
-	return configpb.NodeAddress{}
-}
-
-type KeyNotInRange struct {
-	Key   []byte            `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
-	Range configpb.KeyRange `protobuf:"bytes,2,opt,name=range" json:"range"`
-}
-
-func (m *KeyNotInRange) Reset()                    { *m = KeyNotInRange{} }
-func (m *KeyNotInRange) String() string            { return proto.CompactTextString(m) }
-func (*KeyNotInRange) ProtoMessage()               {}
-func (*KeyNotInRange) Descriptor() ([]byte, []int) { return fileDescriptorErrorpb, []int{2} }
-
-func (m *KeyNotInRange) GetKey() []byte {
-	if m != nil {
-		return m.Key
-	}
-	return nil
-}
-
-func (m *KeyNotInRange) GetRange() configpb.KeyRange {
-	if m != nil {
-		return m.Range
-	}
-	return configpb.KeyRange{}
+	return ""
 }
 
 type KeyNotFound struct {
@@ -109,7 +77,7 @@ type KeyNotFound struct {
 func (m *KeyNotFound) Reset()                    { *m = KeyNotFound{} }
 func (m *KeyNotFound) String() string            { return proto.CompactTextString(m) }
 func (*KeyNotFound) ProtoMessage()               {}
-func (*KeyNotFound) Descriptor() ([]byte, []int) { return fileDescriptorErrorpb, []int{3} }
+func (*KeyNotFound) Descriptor() ([]byte, []int) { return fileDescriptorErrorpb, []int{2} }
 
 func (m *KeyNotFound) GetKey() []byte {
 	if m != nil {
@@ -118,8 +86,24 @@ func (m *KeyNotFound) GetKey() []byte {
 	return nil
 }
 
+type GroupNotFound struct {
+	Groups string `protobuf:"bytes,1,opt,name=groups,proto3" json:"groups,omitempty"`
+}
+
+func (m *GroupNotFound) Reset()                    { *m = GroupNotFound{} }
+func (m *GroupNotFound) String() string            { return proto.CompactTextString(m) }
+func (*GroupNotFound) ProtoMessage()               {}
+func (*GroupNotFound) Descriptor() ([]byte, []int) { return fileDescriptorErrorpb, []int{3} }
+
+func (m *GroupNotFound) GetGroups() string {
+	if m != nil {
+		return m.Groups
+	}
+	return ""
+}
+
 type StaleEpoch struct {
-	CurrentNo configpb.ConfigNo `protobuf:"bytes,1,opt,name=current_no,json=currentNo" json:"current_no"`
+	CurrentTerm configpb.ConfigNo `protobuf:"bytes,1,opt,name=current_term,json=currentTerm" json:"current_term"`
 }
 
 func (m *StaleEpoch) Reset()                    { *m = StaleEpoch{} }
@@ -127,38 +111,53 @@ func (m *StaleEpoch) String() string            { return proto.CompactTextString
 func (*StaleEpoch) ProtoMessage()               {}
 func (*StaleEpoch) Descriptor() ([]byte, []int) { return fileDescriptorErrorpb, []int{4} }
 
-func (m *StaleEpoch) GetCurrentNo() configpb.ConfigNo {
+func (m *StaleEpoch) GetCurrentTerm() configpb.ConfigNo {
 	if m != nil {
-		return m.CurrentNo
+		return m.CurrentTerm
 	}
 	return configpb.ConfigNo{}
 }
 
+type SnTooHigh struct {
+	CurrentSn uint64 `protobuf:"varint,1,opt,name=current_sn,json=currentSn,proto3" json:"current_sn,omitempty"`
+}
+
+func (m *SnTooHigh) Reset()                    { *m = SnTooHigh{} }
+func (m *SnTooHigh) String() string            { return proto.CompactTextString(m) }
+func (*SnTooHigh) ProtoMessage()               {}
+func (*SnTooHigh) Descriptor() ([]byte, []int) { return fileDescriptorErrorpb, []int{5} }
+
+func (m *SnTooHigh) GetCurrentSn() uint64 {
+	if m != nil {
+		return m.CurrentSn
+	}
+	return 0
+}
+
 type Other struct {
+	Message string `protobuf:"bytes,1,opt,name=message,proto3" json:"message,omitempty"`
 }
 
 func (m *Other) Reset()                    { *m = Other{} }
 func (m *Other) String() string            { return proto.CompactTextString(m) }
 func (*Other) ProtoMessage()               {}
-func (*Other) Descriptor() ([]byte, []int) { return fileDescriptorErrorpb, []int{5} }
+func (*Other) Descriptor() ([]byte, []int) { return fileDescriptorErrorpb, []int{6} }
 
-type OK struct {
+func (m *Other) GetMessage() string {
+	if m != nil {
+		return m.Message
+	}
+	return ""
 }
 
-func (m *OK) Reset()                    { *m = OK{} }
-func (m *OK) String() string            { return proto.CompactTextString(m) }
-func (*OK) ProtoMessage()               {}
-func (*OK) Descriptor() ([]byte, []int) { return fileDescriptorErrorpb, []int{6} }
-
 type Error struct {
-	Message string `protobuf:"bytes,1,opt,name=message,proto3" json:"message,omitempty"`
 	// Types that are valid to be assigned to ErrorType:
-	//	*Error_Ok
 	//	*Error_NotLeader
 	//	*Error_Node
-	//	*Error_KeyRange
 	//	*Error_KeyNotFound
 	//	*Error_StaleEpoch
+	//	*Error_GroupNotFound
+	//	*Error_SnTooHigh
 	//	*Error_Other
 	ErrorType isError_ErrorType `protobuf_oneof:"error_type"`
 }
@@ -174,53 +173,39 @@ type isError_ErrorType interface {
 	Size() int
 }
 
-type Error_Ok struct {
-	Ok *OK `protobuf:"bytes,2,opt,name=ok,oneof"`
-}
 type Error_NotLeader struct {
-	NotLeader *NotLeader `protobuf:"bytes,3,opt,name=not_leader,json=notLeader,oneof"`
+	NotLeader *NotLeader `protobuf:"bytes,1,opt,name=not_leader,json=notLeader,oneof"`
 }
 type Error_Node struct {
-	Node *NodeNotFound `protobuf:"bytes,4,opt,name=node,oneof"`
-}
-type Error_KeyRange struct {
-	KeyRange *KeyNotInRange `protobuf:"bytes,5,opt,name=key_range,json=keyRange,oneof"`
+	Node *NodeNotFound `protobuf:"bytes,2,opt,name=node,oneof"`
 }
 type Error_KeyNotFound struct {
-	KeyNotFound *KeyNotFound `protobuf:"bytes,6,opt,name=key_not_found,json=keyNotFound,oneof"`
+	KeyNotFound *KeyNotFound `protobuf:"bytes,3,opt,name=key_not_found,json=keyNotFound,oneof"`
 }
 type Error_StaleEpoch struct {
-	StaleEpoch *StaleEpoch `protobuf:"bytes,7,opt,name=stale_epoch,json=staleEpoch,oneof"`
+	StaleEpoch *StaleEpoch `protobuf:"bytes,4,opt,name=stale_epoch,json=staleEpoch,oneof"`
+}
+type Error_GroupNotFound struct {
+	GroupNotFound *GroupNotFound `protobuf:"bytes,5,opt,name=group_not_found,json=groupNotFound,oneof"`
+}
+type Error_SnTooHigh struct {
+	SnTooHigh *SnTooHigh `protobuf:"bytes,6,opt,name=sn_too_high,json=snTooHigh,oneof"`
 }
 type Error_Other struct {
-	Other *Other `protobuf:"bytes,8,opt,name=other,oneof"`
+	Other *Other `protobuf:"bytes,100,opt,name=other,oneof"`
 }
 
-func (*Error_Ok) isError_ErrorType()          {}
-func (*Error_NotLeader) isError_ErrorType()   {}
-func (*Error_Node) isError_ErrorType()        {}
-func (*Error_KeyRange) isError_ErrorType()    {}
-func (*Error_KeyNotFound) isError_ErrorType() {}
-func (*Error_StaleEpoch) isError_ErrorType()  {}
-func (*Error_Other) isError_ErrorType()       {}
+func (*Error_NotLeader) isError_ErrorType()     {}
+func (*Error_Node) isError_ErrorType()          {}
+func (*Error_KeyNotFound) isError_ErrorType()   {}
+func (*Error_StaleEpoch) isError_ErrorType()    {}
+func (*Error_GroupNotFound) isError_ErrorType() {}
+func (*Error_SnTooHigh) isError_ErrorType()     {}
+func (*Error_Other) isError_ErrorType()         {}
 
 func (m *Error) GetErrorType() isError_ErrorType {
 	if m != nil {
 		return m.ErrorType
-	}
-	return nil
-}
-
-func (m *Error) GetMessage() string {
-	if m != nil {
-		return m.Message
-	}
-	return ""
-}
-
-func (m *Error) GetOk() *OK {
-	if x, ok := m.GetErrorType().(*Error_Ok); ok {
-		return x.Ok
 	}
 	return nil
 }
@@ -239,13 +224,6 @@ func (m *Error) GetNode() *NodeNotFound {
 	return nil
 }
 
-func (m *Error) GetKeyRange() *KeyNotInRange {
-	if x, ok := m.GetErrorType().(*Error_KeyRange); ok {
-		return x.KeyRange
-	}
-	return nil
-}
-
 func (m *Error) GetKeyNotFound() *KeyNotFound {
 	if x, ok := m.GetErrorType().(*Error_KeyNotFound); ok {
 		return x.KeyNotFound
@@ -260,6 +238,20 @@ func (m *Error) GetStaleEpoch() *StaleEpoch {
 	return nil
 }
 
+func (m *Error) GetGroupNotFound() *GroupNotFound {
+	if x, ok := m.GetErrorType().(*Error_GroupNotFound); ok {
+		return x.GroupNotFound
+	}
+	return nil
+}
+
+func (m *Error) GetSnTooHigh() *SnTooHigh {
+	if x, ok := m.GetErrorType().(*Error_SnTooHigh); ok {
+		return x.SnTooHigh
+	}
+	return nil
+}
+
 func (m *Error) GetOther() *Other {
 	if x, ok := m.GetErrorType().(*Error_Other); ok {
 		return x.Other
@@ -270,12 +262,12 @@ func (m *Error) GetOther() *Other {
 // XXX_OneofFuncs is for the internal use of the proto package.
 func (*Error) XXX_OneofFuncs() (func(msg proto.Message, b *proto.Buffer) error, func(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error), func(msg proto.Message) (n int), []interface{}) {
 	return _Error_OneofMarshaler, _Error_OneofUnmarshaler, _Error_OneofSizer, []interface{}{
-		(*Error_Ok)(nil),
 		(*Error_NotLeader)(nil),
 		(*Error_Node)(nil),
-		(*Error_KeyRange)(nil),
 		(*Error_KeyNotFound)(nil),
 		(*Error_StaleEpoch)(nil),
+		(*Error_GroupNotFound)(nil),
+		(*Error_SnTooHigh)(nil),
 		(*Error_Other)(nil),
 	}
 }
@@ -284,38 +276,38 @@ func _Error_OneofMarshaler(msg proto.Message, b *proto.Buffer) error {
 	m := msg.(*Error)
 	// error_type
 	switch x := m.ErrorType.(type) {
-	case *Error_Ok:
-		_ = b.EncodeVarint(2<<3 | proto.WireBytes)
-		if err := b.EncodeMessage(x.Ok); err != nil {
-			return err
-		}
 	case *Error_NotLeader:
-		_ = b.EncodeVarint(3<<3 | proto.WireBytes)
+		_ = b.EncodeVarint(1<<3 | proto.WireBytes)
 		if err := b.EncodeMessage(x.NotLeader); err != nil {
 			return err
 		}
 	case *Error_Node:
-		_ = b.EncodeVarint(4<<3 | proto.WireBytes)
+		_ = b.EncodeVarint(2<<3 | proto.WireBytes)
 		if err := b.EncodeMessage(x.Node); err != nil {
 			return err
 		}
-	case *Error_KeyRange:
-		_ = b.EncodeVarint(5<<3 | proto.WireBytes)
-		if err := b.EncodeMessage(x.KeyRange); err != nil {
-			return err
-		}
 	case *Error_KeyNotFound:
-		_ = b.EncodeVarint(6<<3 | proto.WireBytes)
+		_ = b.EncodeVarint(3<<3 | proto.WireBytes)
 		if err := b.EncodeMessage(x.KeyNotFound); err != nil {
 			return err
 		}
 	case *Error_StaleEpoch:
-		_ = b.EncodeVarint(7<<3 | proto.WireBytes)
+		_ = b.EncodeVarint(4<<3 | proto.WireBytes)
 		if err := b.EncodeMessage(x.StaleEpoch); err != nil {
 			return err
 		}
+	case *Error_GroupNotFound:
+		_ = b.EncodeVarint(5<<3 | proto.WireBytes)
+		if err := b.EncodeMessage(x.GroupNotFound); err != nil {
+			return err
+		}
+	case *Error_SnTooHigh:
+		_ = b.EncodeVarint(6<<3 | proto.WireBytes)
+		if err := b.EncodeMessage(x.SnTooHigh); err != nil {
+			return err
+		}
 	case *Error_Other:
-		_ = b.EncodeVarint(8<<3 | proto.WireBytes)
+		_ = b.EncodeVarint(100<<3 | proto.WireBytes)
 		if err := b.EncodeMessage(x.Other); err != nil {
 			return err
 		}
@@ -329,15 +321,7 @@ func _Error_OneofMarshaler(msg proto.Message, b *proto.Buffer) error {
 func _Error_OneofUnmarshaler(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error) {
 	m := msg.(*Error)
 	switch tag {
-	case 2: // error_type.ok
-		if wire != proto.WireBytes {
-			return true, proto.ErrInternalBadWireType
-		}
-		msg := new(OK)
-		err := b.DecodeMessage(msg)
-		m.ErrorType = &Error_Ok{msg}
-		return true, err
-	case 3: // error_type.not_leader
+	case 1: // error_type.not_leader
 		if wire != proto.WireBytes {
 			return true, proto.ErrInternalBadWireType
 		}
@@ -345,7 +329,7 @@ func _Error_OneofUnmarshaler(msg proto.Message, tag, wire int, b *proto.Buffer) 
 		err := b.DecodeMessage(msg)
 		m.ErrorType = &Error_NotLeader{msg}
 		return true, err
-	case 4: // error_type.node
+	case 2: // error_type.node
 		if wire != proto.WireBytes {
 			return true, proto.ErrInternalBadWireType
 		}
@@ -353,15 +337,7 @@ func _Error_OneofUnmarshaler(msg proto.Message, tag, wire int, b *proto.Buffer) 
 		err := b.DecodeMessage(msg)
 		m.ErrorType = &Error_Node{msg}
 		return true, err
-	case 5: // error_type.key_range
-		if wire != proto.WireBytes {
-			return true, proto.ErrInternalBadWireType
-		}
-		msg := new(KeyNotInRange)
-		err := b.DecodeMessage(msg)
-		m.ErrorType = &Error_KeyRange{msg}
-		return true, err
-	case 6: // error_type.key_not_found
+	case 3: // error_type.key_not_found
 		if wire != proto.WireBytes {
 			return true, proto.ErrInternalBadWireType
 		}
@@ -369,7 +345,7 @@ func _Error_OneofUnmarshaler(msg proto.Message, tag, wire int, b *proto.Buffer) 
 		err := b.DecodeMessage(msg)
 		m.ErrorType = &Error_KeyNotFound{msg}
 		return true, err
-	case 7: // error_type.stale_epoch
+	case 4: // error_type.stale_epoch
 		if wire != proto.WireBytes {
 			return true, proto.ErrInternalBadWireType
 		}
@@ -377,7 +353,23 @@ func _Error_OneofUnmarshaler(msg proto.Message, tag, wire int, b *proto.Buffer) 
 		err := b.DecodeMessage(msg)
 		m.ErrorType = &Error_StaleEpoch{msg}
 		return true, err
-	case 8: // error_type.other
+	case 5: // error_type.group_not_found
+		if wire != proto.WireBytes {
+			return true, proto.ErrInternalBadWireType
+		}
+		msg := new(GroupNotFound)
+		err := b.DecodeMessage(msg)
+		m.ErrorType = &Error_GroupNotFound{msg}
+		return true, err
+	case 6: // error_type.sn_too_high
+		if wire != proto.WireBytes {
+			return true, proto.ErrInternalBadWireType
+		}
+		msg := new(SnTooHigh)
+		err := b.DecodeMessage(msg)
+		m.ErrorType = &Error_SnTooHigh{msg}
+		return true, err
+	case 100: // error_type.other
 		if wire != proto.WireBytes {
 			return true, proto.ErrInternalBadWireType
 		}
@@ -394,39 +386,39 @@ func _Error_OneofSizer(msg proto.Message) (n int) {
 	m := msg.(*Error)
 	// error_type
 	switch x := m.ErrorType.(type) {
-	case *Error_Ok:
-		s := proto.Size(x.Ok)
-		n += proto.SizeVarint(2<<3 | proto.WireBytes)
-		n += proto.SizeVarint(uint64(s))
-		n += s
 	case *Error_NotLeader:
 		s := proto.Size(x.NotLeader)
-		n += proto.SizeVarint(3<<3 | proto.WireBytes)
+		n += proto.SizeVarint(1<<3 | proto.WireBytes)
 		n += proto.SizeVarint(uint64(s))
 		n += s
 	case *Error_Node:
 		s := proto.Size(x.Node)
-		n += proto.SizeVarint(4<<3 | proto.WireBytes)
-		n += proto.SizeVarint(uint64(s))
-		n += s
-	case *Error_KeyRange:
-		s := proto.Size(x.KeyRange)
-		n += proto.SizeVarint(5<<3 | proto.WireBytes)
+		n += proto.SizeVarint(2<<3 | proto.WireBytes)
 		n += proto.SizeVarint(uint64(s))
 		n += s
 	case *Error_KeyNotFound:
 		s := proto.Size(x.KeyNotFound)
-		n += proto.SizeVarint(6<<3 | proto.WireBytes)
+		n += proto.SizeVarint(3<<3 | proto.WireBytes)
 		n += proto.SizeVarint(uint64(s))
 		n += s
 	case *Error_StaleEpoch:
 		s := proto.Size(x.StaleEpoch)
-		n += proto.SizeVarint(7<<3 | proto.WireBytes)
+		n += proto.SizeVarint(4<<3 | proto.WireBytes)
+		n += proto.SizeVarint(uint64(s))
+		n += s
+	case *Error_GroupNotFound:
+		s := proto.Size(x.GroupNotFound)
+		n += proto.SizeVarint(5<<3 | proto.WireBytes)
+		n += proto.SizeVarint(uint64(s))
+		n += s
+	case *Error_SnTooHigh:
+		s := proto.Size(x.SnTooHigh)
+		n += proto.SizeVarint(6<<3 | proto.WireBytes)
 		n += proto.SizeVarint(uint64(s))
 		n += s
 	case *Error_Other:
 		s := proto.Size(x.Other)
-		n += proto.SizeVarint(8<<3 | proto.WireBytes)
+		n += proto.SizeVarint(100<<3 | proto.WireBytes)
 		n += proto.SizeVarint(uint64(s))
 		n += s
 	case nil:
@@ -439,11 +431,11 @@ func _Error_OneofSizer(msg proto.Message) (n int) {
 func init() {
 	proto.RegisterType((*NotLeader)(nil), "errorpb.NotLeader")
 	proto.RegisterType((*NodeNotFound)(nil), "errorpb.NodeNotFound")
-	proto.RegisterType((*KeyNotInRange)(nil), "errorpb.KeyNotInRange")
 	proto.RegisterType((*KeyNotFound)(nil), "errorpb.KeyNotFound")
+	proto.RegisterType((*GroupNotFound)(nil), "errorpb.GroupNotFound")
 	proto.RegisterType((*StaleEpoch)(nil), "errorpb.StaleEpoch")
+	proto.RegisterType((*SnTooHigh)(nil), "errorpb.SnTooHigh")
 	proto.RegisterType((*Other)(nil), "errorpb.Other")
-	proto.RegisterType((*OK)(nil), "errorpb.OK")
 	proto.RegisterType((*Error)(nil), "errorpb.Error")
 }
 func (m *NotLeader) Marshal() (dAtA []byte, err error) {
@@ -461,22 +453,12 @@ func (m *NotLeader) MarshalTo(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	dAtA[i] = 0xa
-	i++
-	i = encodeVarintErrorpb(dAtA, i, uint64(m.GroupNo.Size()))
-	n1, err := m.GroupNo.MarshalTo(dAtA[i:])
-	if err != nil {
-		return 0, err
+	if len(m.Leader) > 0 {
+		dAtA[i] = 0xa
+		i++
+		i = encodeVarintErrorpb(dAtA, i, uint64(len(m.Leader)))
+		i += copy(dAtA[i:], m.Leader)
 	}
-	i += n1
-	dAtA[i] = 0x12
-	i++
-	i = encodeVarintErrorpb(dAtA, i, uint64(m.Leader.Size()))
-	n2, err := m.Leader.MarshalTo(dAtA[i:])
-	if err != nil {
-		return 0, err
-	}
-	i += n2
 	return i, nil
 }
 
@@ -495,46 +477,12 @@ func (m *NodeNotFound) MarshalTo(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	dAtA[i] = 0xa
-	i++
-	i = encodeVarintErrorpb(dAtA, i, uint64(m.Node.Size()))
-	n3, err := m.Node.MarshalTo(dAtA[i:])
-	if err != nil {
-		return 0, err
-	}
-	i += n3
-	return i, nil
-}
-
-func (m *KeyNotInRange) Marshal() (dAtA []byte, err error) {
-	size := m.Size()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *KeyNotInRange) MarshalTo(dAtA []byte) (int, error) {
-	var i int
-	_ = i
-	var l int
-	_ = l
-	if len(m.Key) > 0 {
+	if len(m.Node) > 0 {
 		dAtA[i] = 0xa
 		i++
-		i = encodeVarintErrorpb(dAtA, i, uint64(len(m.Key)))
-		i += copy(dAtA[i:], m.Key)
+		i = encodeVarintErrorpb(dAtA, i, uint64(len(m.Node)))
+		i += copy(dAtA[i:], m.Node)
 	}
-	dAtA[i] = 0x12
-	i++
-	i = encodeVarintErrorpb(dAtA, i, uint64(m.Range.Size()))
-	n4, err := m.Range.MarshalTo(dAtA[i:])
-	if err != nil {
-		return 0, err
-	}
-	i += n4
 	return i, nil
 }
 
@@ -562,6 +510,30 @@ func (m *KeyNotFound) MarshalTo(dAtA []byte) (int, error) {
 	return i, nil
 }
 
+func (m *GroupNotFound) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalTo(dAtA)
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *GroupNotFound) MarshalTo(dAtA []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if len(m.Groups) > 0 {
+		dAtA[i] = 0xa
+		i++
+		i = encodeVarintErrorpb(dAtA, i, uint64(len(m.Groups)))
+		i += copy(dAtA[i:], m.Groups)
+	}
+	return i, nil
+}
+
 func (m *StaleEpoch) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
@@ -579,12 +551,35 @@ func (m *StaleEpoch) MarshalTo(dAtA []byte) (int, error) {
 	_ = l
 	dAtA[i] = 0xa
 	i++
-	i = encodeVarintErrorpb(dAtA, i, uint64(m.CurrentNo.Size()))
-	n5, err := m.CurrentNo.MarshalTo(dAtA[i:])
+	i = encodeVarintErrorpb(dAtA, i, uint64(m.CurrentTerm.Size()))
+	n1, err := m.CurrentTerm.MarshalTo(dAtA[i:])
 	if err != nil {
 		return 0, err
 	}
-	i += n5
+	i += n1
+	return i, nil
+}
+
+func (m *SnTooHigh) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalTo(dAtA)
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *SnTooHigh) MarshalTo(dAtA []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if m.CurrentSn != 0 {
+		dAtA[i] = 0x8
+		i++
+		i = encodeVarintErrorpb(dAtA, i, uint64(m.CurrentSn))
+	}
 	return i, nil
 }
 
@@ -603,24 +598,12 @@ func (m *Other) MarshalTo(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	return i, nil
-}
-
-func (m *OK) Marshal() (dAtA []byte, err error) {
-	size := m.Size()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
-	if err != nil {
-		return nil, err
+	if len(m.Message) > 0 {
+		dAtA[i] = 0xa
+		i++
+		i = encodeVarintErrorpb(dAtA, i, uint64(len(m.Message)))
+		i += copy(dAtA[i:], m.Message)
 	}
-	return dAtA[:n], nil
-}
-
-func (m *OK) MarshalTo(dAtA []byte) (int, error) {
-	var i int
-	_ = i
-	var l int
-	_ = l
 	return i, nil
 }
 
@@ -639,29 +622,79 @@ func (m *Error) MarshalTo(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if len(m.Message) > 0 {
-		dAtA[i] = 0xa
-		i++
-		i = encodeVarintErrorpb(dAtA, i, uint64(len(m.Message)))
-		i += copy(dAtA[i:], m.Message)
-	}
 	if m.ErrorType != nil {
-		nn6, err := m.ErrorType.MarshalTo(dAtA[i:])
+		nn2, err := m.ErrorType.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += nn6
+		i += nn2
 	}
 	return i, nil
 }
 
-func (m *Error_Ok) MarshalTo(dAtA []byte) (int, error) {
+func (m *Error_NotLeader) MarshalTo(dAtA []byte) (int, error) {
 	i := 0
-	if m.Ok != nil {
+	if m.NotLeader != nil {
+		dAtA[i] = 0xa
+		i++
+		i = encodeVarintErrorpb(dAtA, i, uint64(m.NotLeader.Size()))
+		n3, err := m.NotLeader.MarshalTo(dAtA[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n3
+	}
+	return i, nil
+}
+func (m *Error_Node) MarshalTo(dAtA []byte) (int, error) {
+	i := 0
+	if m.Node != nil {
 		dAtA[i] = 0x12
 		i++
-		i = encodeVarintErrorpb(dAtA, i, uint64(m.Ok.Size()))
-		n7, err := m.Ok.MarshalTo(dAtA[i:])
+		i = encodeVarintErrorpb(dAtA, i, uint64(m.Node.Size()))
+		n4, err := m.Node.MarshalTo(dAtA[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n4
+	}
+	return i, nil
+}
+func (m *Error_KeyNotFound) MarshalTo(dAtA []byte) (int, error) {
+	i := 0
+	if m.KeyNotFound != nil {
+		dAtA[i] = 0x1a
+		i++
+		i = encodeVarintErrorpb(dAtA, i, uint64(m.KeyNotFound.Size()))
+		n5, err := m.KeyNotFound.MarshalTo(dAtA[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n5
+	}
+	return i, nil
+}
+func (m *Error_StaleEpoch) MarshalTo(dAtA []byte) (int, error) {
+	i := 0
+	if m.StaleEpoch != nil {
+		dAtA[i] = 0x22
+		i++
+		i = encodeVarintErrorpb(dAtA, i, uint64(m.StaleEpoch.Size()))
+		n6, err := m.StaleEpoch.MarshalTo(dAtA[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n6
+	}
+	return i, nil
+}
+func (m *Error_GroupNotFound) MarshalTo(dAtA []byte) (int, error) {
+	i := 0
+	if m.GroupNotFound != nil {
+		dAtA[i] = 0x2a
+		i++
+		i = encodeVarintErrorpb(dAtA, i, uint64(m.GroupNotFound.Size()))
+		n7, err := m.GroupNotFound.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
@@ -669,13 +702,13 @@ func (m *Error_Ok) MarshalTo(dAtA []byte) (int, error) {
 	}
 	return i, nil
 }
-func (m *Error_NotLeader) MarshalTo(dAtA []byte) (int, error) {
+func (m *Error_SnTooHigh) MarshalTo(dAtA []byte) (int, error) {
 	i := 0
-	if m.NotLeader != nil {
-		dAtA[i] = 0x1a
+	if m.SnTooHigh != nil {
+		dAtA[i] = 0x32
 		i++
-		i = encodeVarintErrorpb(dAtA, i, uint64(m.NotLeader.Size()))
-		n8, err := m.NotLeader.MarshalTo(dAtA[i:])
+		i = encodeVarintErrorpb(dAtA, i, uint64(m.SnTooHigh.Size()))
+		n8, err := m.SnTooHigh.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
@@ -683,73 +716,19 @@ func (m *Error_NotLeader) MarshalTo(dAtA []byte) (int, error) {
 	}
 	return i, nil
 }
-func (m *Error_Node) MarshalTo(dAtA []byte) (int, error) {
+func (m *Error_Other) MarshalTo(dAtA []byte) (int, error) {
 	i := 0
-	if m.Node != nil {
-		dAtA[i] = 0x22
+	if m.Other != nil {
+		dAtA[i] = 0xa2
 		i++
-		i = encodeVarintErrorpb(dAtA, i, uint64(m.Node.Size()))
-		n9, err := m.Node.MarshalTo(dAtA[i:])
+		dAtA[i] = 0x6
+		i++
+		i = encodeVarintErrorpb(dAtA, i, uint64(m.Other.Size()))
+		n9, err := m.Other.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
 		i += n9
-	}
-	return i, nil
-}
-func (m *Error_KeyRange) MarshalTo(dAtA []byte) (int, error) {
-	i := 0
-	if m.KeyRange != nil {
-		dAtA[i] = 0x2a
-		i++
-		i = encodeVarintErrorpb(dAtA, i, uint64(m.KeyRange.Size()))
-		n10, err := m.KeyRange.MarshalTo(dAtA[i:])
-		if err != nil {
-			return 0, err
-		}
-		i += n10
-	}
-	return i, nil
-}
-func (m *Error_KeyNotFound) MarshalTo(dAtA []byte) (int, error) {
-	i := 0
-	if m.KeyNotFound != nil {
-		dAtA[i] = 0x32
-		i++
-		i = encodeVarintErrorpb(dAtA, i, uint64(m.KeyNotFound.Size()))
-		n11, err := m.KeyNotFound.MarshalTo(dAtA[i:])
-		if err != nil {
-			return 0, err
-		}
-		i += n11
-	}
-	return i, nil
-}
-func (m *Error_StaleEpoch) MarshalTo(dAtA []byte) (int, error) {
-	i := 0
-	if m.StaleEpoch != nil {
-		dAtA[i] = 0x3a
-		i++
-		i = encodeVarintErrorpb(dAtA, i, uint64(m.StaleEpoch.Size()))
-		n12, err := m.StaleEpoch.MarshalTo(dAtA[i:])
-		if err != nil {
-			return 0, err
-		}
-		i += n12
-	}
-	return i, nil
-}
-func (m *Error_Other) MarshalTo(dAtA []byte) (int, error) {
-	i := 0
-	if m.Other != nil {
-		dAtA[i] = 0x42
-		i++
-		i = encodeVarintErrorpb(dAtA, i, uint64(m.Other.Size()))
-		n13, err := m.Other.MarshalTo(dAtA[i:])
-		if err != nil {
-			return 0, err
-		}
-		i += n13
 	}
 	return i, nil
 }
@@ -765,30 +744,20 @@ func encodeVarintErrorpb(dAtA []byte, offset int, v uint64) int {
 func (m *NotLeader) Size() (n int) {
 	var l int
 	_ = l
-	l = m.GroupNo.Size()
-	n += 1 + l + sovErrorpb(uint64(l))
-	l = m.Leader.Size()
-	n += 1 + l + sovErrorpb(uint64(l))
+	l = len(m.Leader)
+	if l > 0 {
+		n += 1 + l + sovErrorpb(uint64(l))
+	}
 	return n
 }
 
 func (m *NodeNotFound) Size() (n int) {
 	var l int
 	_ = l
-	l = m.Node.Size()
-	n += 1 + l + sovErrorpb(uint64(l))
-	return n
-}
-
-func (m *KeyNotInRange) Size() (n int) {
-	var l int
-	_ = l
-	l = len(m.Key)
+	l = len(m.Node)
 	if l > 0 {
 		n += 1 + l + sovErrorpb(uint64(l))
 	}
-	l = m.Range.Size()
-	n += 1 + l + sovErrorpb(uint64(l))
 	return n
 }
 
@@ -802,48 +771,52 @@ func (m *KeyNotFound) Size() (n int) {
 	return n
 }
 
+func (m *GroupNotFound) Size() (n int) {
+	var l int
+	_ = l
+	l = len(m.Groups)
+	if l > 0 {
+		n += 1 + l + sovErrorpb(uint64(l))
+	}
+	return n
+}
+
 func (m *StaleEpoch) Size() (n int) {
 	var l int
 	_ = l
-	l = m.CurrentNo.Size()
+	l = m.CurrentTerm.Size()
 	n += 1 + l + sovErrorpb(uint64(l))
+	return n
+}
+
+func (m *SnTooHigh) Size() (n int) {
+	var l int
+	_ = l
+	if m.CurrentSn != 0 {
+		n += 1 + sovErrorpb(uint64(m.CurrentSn))
+	}
 	return n
 }
 
 func (m *Other) Size() (n int) {
 	var l int
 	_ = l
-	return n
-}
-
-func (m *OK) Size() (n int) {
-	var l int
-	_ = l
+	l = len(m.Message)
+	if l > 0 {
+		n += 1 + l + sovErrorpb(uint64(l))
+	}
 	return n
 }
 
 func (m *Error) Size() (n int) {
 	var l int
 	_ = l
-	l = len(m.Message)
-	if l > 0 {
-		n += 1 + l + sovErrorpb(uint64(l))
-	}
 	if m.ErrorType != nil {
 		n += m.ErrorType.Size()
 	}
 	return n
 }
 
-func (m *Error_Ok) Size() (n int) {
-	var l int
-	_ = l
-	if m.Ok != nil {
-		l = m.Ok.Size()
-		n += 1 + l + sovErrorpb(uint64(l))
-	}
-	return n
-}
 func (m *Error_NotLeader) Size() (n int) {
 	var l int
 	_ = l
@@ -858,15 +831,6 @@ func (m *Error_Node) Size() (n int) {
 	_ = l
 	if m.Node != nil {
 		l = m.Node.Size()
-		n += 1 + l + sovErrorpb(uint64(l))
-	}
-	return n
-}
-func (m *Error_KeyRange) Size() (n int) {
-	var l int
-	_ = l
-	if m.KeyRange != nil {
-		l = m.KeyRange.Size()
 		n += 1 + l + sovErrorpb(uint64(l))
 	}
 	return n
@@ -889,12 +853,30 @@ func (m *Error_StaleEpoch) Size() (n int) {
 	}
 	return n
 }
+func (m *Error_GroupNotFound) Size() (n int) {
+	var l int
+	_ = l
+	if m.GroupNotFound != nil {
+		l = m.GroupNotFound.Size()
+		n += 1 + l + sovErrorpb(uint64(l))
+	}
+	return n
+}
+func (m *Error_SnTooHigh) Size() (n int) {
+	var l int
+	_ = l
+	if m.SnTooHigh != nil {
+		l = m.SnTooHigh.Size()
+		n += 1 + l + sovErrorpb(uint64(l))
+	}
+	return n
+}
 func (m *Error_Other) Size() (n int) {
 	var l int
 	_ = l
 	if m.Other != nil {
 		l = m.Other.Size()
-		n += 1 + l + sovErrorpb(uint64(l))
+		n += 2 + l + sovErrorpb(uint64(l))
 	}
 	return n
 }
@@ -943,39 +925,9 @@ func (m *NotLeader) Unmarshal(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field GroupNo", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowErrorpb
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= (int(b) & 0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthErrorpb
-			}
-			postIndex := iNdEx + msglen
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if err := m.GroupNo.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Leader", wireType)
 			}
-			var msglen int
+			var stringLen uint64
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowErrorpb
@@ -985,21 +937,20 @@ func (m *NotLeader) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				msglen |= (int(b) & 0x7F) << shift
+				stringLen |= (uint64(b) & 0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			if msglen < 0 {
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
 				return ErrInvalidLengthErrorpb
 			}
-			postIndex := iNdEx + msglen
+			postIndex := iNdEx + intStringLen
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if err := m.Leader.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
+			m.Leader = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -1055,7 +1006,7 @@ func (m *NodeNotFound) Unmarshal(dAtA []byte) error {
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Node", wireType)
 			}
-			var msglen int
+			var stringLen uint64
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowErrorpb
@@ -1065,132 +1016,20 @@ func (m *NodeNotFound) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				msglen |= (int(b) & 0x7F) << shift
+				stringLen |= (uint64(b) & 0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			if msglen < 0 {
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
 				return ErrInvalidLengthErrorpb
 			}
-			postIndex := iNdEx + msglen
+			postIndex := iNdEx + intStringLen
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if err := m.Node.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		default:
-			iNdEx = preIndex
-			skippy, err := skipErrorpb(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if skippy < 0 {
-				return ErrInvalidLengthErrorpb
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *KeyNotInRange) Unmarshal(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowErrorpb
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= (uint64(b) & 0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: KeyNotInRange: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: KeyNotInRange: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var byteLen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowErrorpb
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				byteLen |= (int(b) & 0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if byteLen < 0 {
-				return ErrInvalidLengthErrorpb
-			}
-			postIndex := iNdEx + byteLen
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Key = append(m.Key[:0], dAtA[iNdEx:postIndex]...)
-			if m.Key == nil {
-				m.Key = []byte{}
-			}
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Range", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowErrorpb
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= (int(b) & 0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthErrorpb
-			}
-			postIndex := iNdEx + msglen
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if err := m.Range.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
+			m.Node = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -1294,6 +1133,85 @@ func (m *KeyNotFound) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
+func (m *GroupNotFound) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowErrorpb
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: GroupNotFound: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: GroupNotFound: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Groups", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowErrorpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthErrorpb
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Groups = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipErrorpb(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthErrorpb
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
 func (m *StaleEpoch) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
@@ -1325,7 +1243,7 @@ func (m *StaleEpoch) Unmarshal(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field CurrentNo", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field CurrentTerm", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -1349,10 +1267,79 @@ func (m *StaleEpoch) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if err := m.CurrentNo.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+			if err := m.CurrentTerm.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipErrorpb(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthErrorpb
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *SnTooHigh) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowErrorpb
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: SnTooHigh: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: SnTooHigh: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CurrentSn", wireType)
+			}
+			m.CurrentSn = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowErrorpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.CurrentSn |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipErrorpb(dAtA[iNdEx:])
@@ -1403,56 +1390,35 @@ func (m *Other) Unmarshal(dAtA []byte) error {
 			return fmt.Errorf("proto: Other: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		default:
-			iNdEx = preIndex
-			skippy, err := skipErrorpb(dAtA[iNdEx:])
-			if err != nil {
-				return err
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Message", wireType)
 			}
-			if skippy < 0 {
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowErrorpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
 				return ErrInvalidLengthErrorpb
 			}
-			if (iNdEx + skippy) > l {
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *OK) Unmarshal(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowErrorpb
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= (uint64(b) & 0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: OK: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: OK: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
+			m.Message = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipErrorpb(dAtA[iNdEx:])
@@ -1505,67 +1471,6 @@ func (m *Error) Unmarshal(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Message", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowErrorpb
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= (uint64(b) & 0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return ErrInvalidLengthErrorpb
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Message = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Ok", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowErrorpb
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= (int(b) & 0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthErrorpb
-			}
-			postIndex := iNdEx + msglen
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			v := &OK{}
-			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			m.ErrorType = &Error_Ok{v}
-			iNdEx = postIndex
-		case 3:
-			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NotLeader", wireType)
 			}
 			var msglen int
@@ -1596,7 +1501,7 @@ func (m *Error) Unmarshal(dAtA []byte) error {
 			}
 			m.ErrorType = &Error_NotLeader{v}
 			iNdEx = postIndex
-		case 4:
+		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Node", wireType)
 			}
@@ -1628,39 +1533,7 @@ func (m *Error) Unmarshal(dAtA []byte) error {
 			}
 			m.ErrorType = &Error_Node{v}
 			iNdEx = postIndex
-		case 5:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field KeyRange", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowErrorpb
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= (int(b) & 0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthErrorpb
-			}
-			postIndex := iNdEx + msglen
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			v := &KeyNotInRange{}
-			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			m.ErrorType = &Error_KeyRange{v}
-			iNdEx = postIndex
-		case 6:
+		case 3:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field KeyNotFound", wireType)
 			}
@@ -1692,7 +1565,7 @@ func (m *Error) Unmarshal(dAtA []byte) error {
 			}
 			m.ErrorType = &Error_KeyNotFound{v}
 			iNdEx = postIndex
-		case 7:
+		case 4:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field StaleEpoch", wireType)
 			}
@@ -1724,7 +1597,71 @@ func (m *Error) Unmarshal(dAtA []byte) error {
 			}
 			m.ErrorType = &Error_StaleEpoch{v}
 			iNdEx = postIndex
-		case 8:
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field GroupNotFound", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowErrorpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthErrorpb
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			v := &GroupNotFound{}
+			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			m.ErrorType = &Error_GroupNotFound{v}
+			iNdEx = postIndex
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SnTooHigh", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowErrorpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthErrorpb
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			v := &SnTooHigh{}
+			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			m.ErrorType = &Error_SnTooHigh{v}
+			iNdEx = postIndex
+		case 100:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Other", wireType)
 			}
@@ -1885,36 +1822,37 @@ var (
 func init() { proto.RegisterFile("errorpb/errorpb.proto", fileDescriptorErrorpb) }
 
 var fileDescriptorErrorpb = []byte{
-	// 481 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x8c, 0x93, 0xd1, 0x8a, 0xd3, 0x40,
-	0x14, 0x86, 0x93, 0xb6, 0x69, 0x9a, 0x93, 0xae, 0xc8, 0xd8, 0xd5, 0xb0, 0x60, 0x56, 0x72, 0x21,
-	0x82, 0xd0, 0x82, 0x45, 0x05, 0x6f, 0xc4, 0x4a, 0x25, 0x52, 0x49, 0x31, 0x3e, 0x40, 0x68, 0x9b,
-	0xd9, 0xac, 0x64, 0x9d, 0x13, 0x26, 0xd3, 0x8b, 0x5c, 0xfb, 0x12, 0x3e, 0xd2, 0x5e, 0xee, 0x13,
-	0x88, 0xd6, 0x17, 0x91, 0x99, 0x4c, 0x92, 0xaa, 0x20, 0x7b, 0xd5, 0x93, 0x39, 0xff, 0x77, 0xe6,
-	0xcc, 0xff, 0x53, 0x38, 0xa5, 0x9c, 0x23, 0x2f, 0xb6, 0x33, 0xfd, 0x3b, 0x2d, 0x38, 0x0a, 0x24,
-	0xb6, 0xfe, 0x3c, 0x9b, 0x64, 0x98, 0xa1, 0x3a, 0x9b, 0xc9, 0xaa, 0x6e, 0x9f, 0x3d, 0xd8, 0x21,
-	0xbb, 0xf8, 0x9c, 0x15, 0xdb, 0x59, 0x53, 0xd4, 0x8d, 0x60, 0x0f, 0x4e, 0x84, 0xe2, 0x03, 0xdd,
-	0xa4, 0x94, 0x93, 0x39, 0x8c, 0x32, 0x8e, 0xfb, 0x22, 0x61, 0xe8, 0x99, 0x8f, 0xcc, 0x27, 0xee,
-	0x33, 0x32, 0x6d, 0xf5, 0x6f, 0x55, 0x11, 0xe1, 0x62, 0x70, 0xfd, 0xfd, 0xdc, 0x88, 0x6d, 0xa5,
-	0x8c, 0x90, 0xcc, 0x61, 0x78, 0xa5, 0x70, 0xaf, 0xa7, 0x90, 0xd3, 0x0e, 0x89, 0x30, 0xa5, 0x6f,
-	0xd2, 0x94, 0xd3, 0xb2, 0xd4, 0x94, 0x96, 0x06, 0xaf, 0x61, 0x2c, 0x9b, 0x11, 0x8a, 0x77, 0xb8,
-	0x67, 0x29, 0x99, 0xc1, 0x80, 0x61, 0x4a, 0xf5, 0xad, 0xff, 0x1d, 0xa1, 0x84, 0xc1, 0x47, 0x38,
-	0x59, 0xd1, 0x2a, 0x42, 0xf1, 0x9e, 0xc5, 0x1b, 0x96, 0x51, 0x72, 0x17, 0xfa, 0x39, 0xad, 0xd4,
-	0x80, 0x71, 0x2c, 0x4b, 0x32, 0x05, 0x8b, 0xcb, 0x96, 0xde, 0xeb, 0xe8, 0x29, 0x2b, 0x5a, 0x29,
-	0x48, 0x4f, 0xac, 0x65, 0xc1, 0x39, 0xb8, 0xf5, 0xc8, 0x7a, 0xa5, 0x7f, 0x06, 0x06, 0x4b, 0x80,
-	0x4f, 0x62, 0x73, 0x45, 0x97, 0x05, 0xee, 0x2e, 0xc9, 0x4b, 0x80, 0xdd, 0x9e, 0x73, 0xca, 0xc4,
-	0x6d, 0xec, 0x72, 0xb4, 0x36, 0xc2, 0xc0, 0x06, 0x6b, 0x2d, 0x2e, 0x29, 0x0f, 0x06, 0xd0, 0x5b,
-	0xaf, 0x82, 0xaf, 0x7d, 0xb0, 0x96, 0x32, 0x3c, 0xe2, 0x81, 0xfd, 0x85, 0x96, 0xe5, 0x26, 0xab,
-	0x7d, 0x70, 0xe2, 0xe6, 0x93, 0x3c, 0x84, 0x1e, 0xe6, 0xfa, 0x1d, 0xee, 0xb4, 0x49, 0x7e, 0xbd,
-	0x0a, 0x8d, 0xb8, 0x87, 0x39, 0x99, 0x03, 0x30, 0x14, 0x89, 0x8e, 0xa1, 0xaf, 0x57, 0x69, 0x64,
-	0x6d, 0xbe, 0xa1, 0x11, 0x3b, 0xac, 0x0d, 0xfb, 0xa9, 0xb6, 0x7c, 0xa0, 0x2d, 0xef, 0xe4, 0x5d,
-	0x2e, 0xa1, 0xb6, 0x9b, 0x3c, 0x07, 0x27, 0xa7, 0x55, 0x52, 0xfb, 0x69, 0x29, 0xe2, 0x7e, 0x4b,
-	0xfc, 0x11, 0x44, 0x68, 0xc4, 0xa3, 0x5c, 0xfb, 0x4b, 0x5e, 0xc1, 0x89, 0xc4, 0xe4, 0x72, 0x17,
-	0x72, 0x9e, 0x37, 0x54, 0xe8, 0xe4, 0x2f, 0xb4, 0xb9, 0xcb, 0xcd, 0x8f, 0xfc, 0x7f, 0x01, 0x6e,
-	0x29, 0xdd, 0x4e, 0xa8, 0xb4, 0xdb, 0xb3, 0x15, 0x79, 0xaf, 0x25, 0xbb, 0x24, 0x42, 0x23, 0x86,
-	0xb2, 0xcb, 0xe5, 0x31, 0x58, 0x28, 0xed, 0xf5, 0x46, 0x8a, 0xb8, 0xd3, 0xd9, 0x25, 0x4f, 0x43,
-	0x23, 0xae, 0xdb, 0x8b, 0x31, 0x80, 0xea, 0x24, 0xa2, 0x2a, 0xe8, 0x62, 0x72, 0xf3, 0xd3, 0x37,
-	0xae, 0x0f, 0xbe, 0x79, 0x73, 0xf0, 0xcd, 0x1f, 0x07, 0xdf, 0xfc, 0xf6, 0xcb, 0x37, 0xb6, 0x43,
-	0xf5, 0x27, 0x99, 0xff, 0x0e, 0x00, 0x00, 0xff, 0xff, 0x98, 0x96, 0xbb, 0xc3, 0x75, 0x03, 0x00,
+	// 497 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x5c, 0x92, 0xdf, 0x8a, 0xd3, 0x40,
+	0x14, 0xc6, 0x53, 0xfb, 0x67, 0xe9, 0x49, 0xab, 0x32, 0xee, 0x96, 0xb0, 0x60, 0x57, 0x23, 0xa8,
+	0x28, 0x36, 0xe0, 0x8a, 0x82, 0xde, 0x48, 0x65, 0x35, 0xa2, 0x54, 0x48, 0xf7, 0x3e, 0xe4, 0xcf,
+	0x34, 0x29, 0x6d, 0xe7, 0xc4, 0xc9, 0xe4, 0x22, 0xcf, 0xe0, 0x0b, 0xf8, 0x48, 0x7b, 0xb9, 0x4f,
+	0x20, 0x5a, 0x5f, 0x44, 0x66, 0x92, 0x4c, 0xb3, 0x5e, 0xf5, 0x9c, 0x39, 0xdf, 0x37, 0xa7, 0xf3,
+	0xfb, 0x02, 0x27, 0x94, 0x73, 0xe4, 0x59, 0xe8, 0xd4, 0xbf, 0xb3, 0x8c, 0xa3, 0x40, 0x72, 0x54,
+	0xb7, 0xa7, 0x2f, 0x92, 0xb5, 0x48, 0x8b, 0x70, 0x16, 0xe1, 0xce, 0x49, 0x30, 0x41, 0x47, 0xcd,
+	0xc3, 0x62, 0xa5, 0x3a, 0xd5, 0xa8, 0xaa, 0xf2, 0x9d, 0xbe, 0x69, 0xc9, 0xa3, 0x14, 0xb7, 0x94,
+	0x07, 0x34, 0x2d, 0xbf, 0x3b, 0x41, 0x5e, 0x6c, 0x02, 0x27, 0x0b, 0x9d, 0x08, 0xd9, 0x6a, 0x9d,
+	0xb4, 0x8a, 0xca, 0x68, 0x3f, 0x82, 0xe1, 0x02, 0xc5, 0x57, 0x1a, 0xc4, 0x94, 0x93, 0x09, 0x0c,
+	0xb6, 0xaa, 0xb2, 0x3a, 0x0f, 0x3a, 0x4f, 0x87, 0x5e, 0xdd, 0xd9, 0x36, 0x8c, 0x16, 0x18, 0xd3,
+	0x05, 0x8a, 0x8f, 0x58, 0xb0, 0x98, 0x10, 0xe8, 0x31, 0x8c, 0x69, 0xad, 0x52, 0xb5, 0x7d, 0x06,
+	0xe6, 0x17, 0x5a, 0x6a, 0xc9, 0x5d, 0xe8, 0x6e, 0x68, 0xa9, 0x14, 0x23, 0x4f, 0x96, 0xf6, 0x13,
+	0x18, 0x7f, 0xe2, 0x58, 0x64, 0x5a, 0x32, 0x81, 0x41, 0x22, 0x0f, 0xf2, 0x66, 0x5b, 0xd5, 0xd9,
+	0x9f, 0x01, 0x96, 0x22, 0xd8, 0xd2, 0x8b, 0x0c, 0xa3, 0x94, 0xbc, 0x83, 0x51, 0x54, 0x70, 0x4e,
+	0x99, 0xf0, 0x05, 0xe5, 0x3b, 0xa5, 0x35, 0x5f, 0x92, 0x99, 0x7e, 0xc7, 0x07, 0x55, 0x2c, 0x70,
+	0xde, 0xbb, 0xfa, 0x75, 0x66, 0x78, 0x66, 0xad, 0xbe, 0xa4, 0x7c, 0x67, 0x3f, 0x83, 0xe1, 0x92,
+	0x5d, 0x22, 0xba, 0xeb, 0x24, 0x25, 0xf7, 0x01, 0x9a, 0x9b, 0x72, 0xa6, 0xee, 0xe9, 0x79, 0xc3,
+	0xfa, 0x64, 0xc9, 0xec, 0x87, 0xd0, 0xff, 0x26, 0x52, 0xca, 0x89, 0x05, 0x47, 0x3b, 0x9a, 0xe7,
+	0x41, 0xd2, 0x3c, 0xb0, 0x69, 0xed, 0x1f, 0x5d, 0xe8, 0x5f, 0xc8, 0x80, 0xc8, 0x39, 0x00, 0x43,
+	0xe1, 0xb7, 0x68, 0xc9, 0xff, 0xd4, 0x64, 0xa9, 0x89, 0xba, 0x86, 0x37, 0x64, 0x1a, 0xef, 0xf3,
+	0x1a, 0xdb, 0x2d, 0x25, 0x3f, 0x69, 0xc9, 0x0f, 0x6c, 0x5d, 0xa3, 0xe2, 0x49, 0xde, 0xc2, 0x78,
+	0x43, 0x4b, 0x5f, 0x6e, 0x59, 0xc9, 0x81, 0xd5, 0x55, 0xae, 0x63, 0xed, 0x6a, 0xd1, 0x76, 0x0d,
+	0xcf, 0xdc, 0xb4, 0xe0, 0xbf, 0x06, 0x33, 0x97, 0x04, 0x7d, 0x2a, 0x11, 0x5a, 0x3d, 0xe5, 0xbc,
+	0xa7, 0x9d, 0x07, 0xba, 0xae, 0xe1, 0x41, 0x7e, 0x60, 0xfd, 0x1e, 0xee, 0xa8, 0x0c, 0x5a, 0x5b,
+	0xfb, 0xca, 0x3b, 0xd1, 0xde, 0x1b, 0x11, 0xba, 0x86, 0x37, 0x4e, 0x6e, 0x64, 0xfa, 0x0a, 0xcc,
+	0x9c, 0xf9, 0x02, 0xd1, 0x4f, 0xd7, 0x49, 0x6a, 0x0d, 0xfe, 0x03, 0xa3, 0xc3, 0x90, 0x60, 0x72,
+	0x9d, 0xcc, 0x63, 0xe8, 0xa3, 0x44, 0x6f, 0xc5, 0x4a, 0x7f, 0x5b, 0xeb, 0x55, 0x20, 0xae, 0xe1,
+	0x55, 0xe3, 0xf9, 0x08, 0x40, 0x4d, 0x7c, 0x51, 0x66, 0x74, 0x7e, 0x7c, 0xfd, 0x67, 0x6a, 0x5c,
+	0xed, 0xa7, 0x9d, 0xeb, 0xfd, 0xb4, 0xf3, 0x7b, 0x3f, 0xed, 0xfc, 0xfc, 0x3b, 0x35, 0xc2, 0x81,
+	0xfa, 0xae, 0xcf, 0xff, 0x05, 0x00, 0x00, 0xff, 0xff, 0x40, 0x5a, 0x86, 0x2f, 0x61, 0x03, 0x00,
 	0x00,
 }

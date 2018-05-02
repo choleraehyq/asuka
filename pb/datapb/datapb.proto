@@ -2,10 +2,10 @@ syntax = "proto3";
 
 package datapb;
 
-import "gogoproto/gogo.proto";
-import "configpb/configpb.proto";
-import "errorpb/errorpb.proto";
-import "storagepb/storagepb.proto";
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "github.com/choleraehyq/asuka/pb/configpb/configpb.proto";
+import "github.com/choleraehyq/asuka/pb/errorpb/errorpb.proto";
+import "github.com/choleraehyq/asuka/pb/storagepb/storagepb.proto";
 
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.sizer_all) = true;
@@ -13,7 +13,8 @@ option (gogoproto.unmarshaler_all) = true;
 option (gogoproto.goproto_enum_prefix_all) = false;
 
 message GetReq {
-    bytes key = 1;
+    string group_id = 1;
+    bytes key = 2;
 }
 
 message GetResp {
@@ -22,7 +23,8 @@ message GetResp {
 }
 
 message SetReq {
-    storagepb.KVPair pair = 1 [(gogoproto.nullable) = false];
+    string group_id = 1;
+    storagepb.KVPair pair = 2 [(gogoproto.nullable) = false];
 }
 
 message SetResp {
@@ -30,40 +32,29 @@ message SetResp {
 }
 
 message Log {
-    bytes key = 1;
-    bytes old_value = 2;
-    bytes new_value = 3;
+    storagepb.KVPair kv = 1;
 }
 
 message AppendLogReq {
     configpb.ConfigNo group_no = 1 [(gogoproto.nullable) = false];
     uint64 sn = 2;
     Log log = 3;
+    uint64 commit_sn = 4;
 }
 
 message AppendLogResp {
-    configpb.ConfigNo group_no = 1 [(gogoproto.nullable) = false];
     uint64 sn = 3;
-}
-
-message HeartbeatReq {
-    configpb.ConfigNo group_no = 1 [(gogoproto.nullable) = false];
-}
-
-message HeartbeatResp {
-    configpb.ConfigNo group_no = 1 [(gogoproto.nullable) = false];
-    errorpb.Error error = 2;
+    errorpb.Error error = 100;
 }
 
 message GetLatestSnapshotReq {
     configpb.ConfigNo group_no = 1 [(gogoproto.nullable) = false];
-    configpb.KeyRange range = 2 [(gogoproto.nullable) = false];
 }
 
 message GetLatestSnapshotResp {
     configpb.ConfigNo group_no = 1 [(gogoproto.nullable) = false];
     storagepb.Snapshot snapshot = 2;
-    errorpb.Error error = 3;
+    errorpb.Error error = 100;
 }
 
 message GetLogReq {
@@ -72,36 +63,54 @@ message GetLogReq {
 }
 
 message GetLogResp {
-    configpb.ConfigNo group_no = 1 [(gogoproto.nullable) = false];
-    uint64 sn = 2;
-    Log log = 3;
-    errorpb.Error error = 4;
+    uint64 prepare_sn = 1;
+    uint64 commit_sn = 2;
+    uint64 sn = 3;
+    Log log = 4;
+    errorpb.Error error = 5;
 }
 
 // the reason causes this group change
 enum GroupChangeType {
-    ADD_NODE = 0;
-    REMOVE_NODE = 1;
-    NEED_SPLIT = 2;
-    DO_SPLIT = 3;
+    // change self to learner or secondary; use CHANGE_TO_PRIMARY when changing to primary
+    // other replica info may also change
+    CHANGE_NODE = 0;
+    // create new replica group
+    CREATE_GROUP = 1;
+    // join an existing group as learner
+    ADD_TO_GROUP = 2;
+    // delete self from an existing group
+    // currently not used
+    REMOVE_FROM_GROUP = 3;
+    // change self to primary replica
+    CHANGE_TO_PRIMARY = 4;
 }
 
 message GroupChangeReq {
-    configpb.GroupInfo new_group_info = 1;
+    configpb.GroupInfo group_info = 1;
     GroupChangeType reason = 2;
 }
 
 message GroupChangeResp {
-    configpb.GroupInfo new_group_info = 1;
     errorpb.Error error = 2;
 }
 
 message MetaServerChangeReq {
-    repeated configpb.NodeAddress new_meta_list = 1;
+    string primary = 1;
+    repeated string new_meta_list = 2;
 }
 
 message MetaServerChangeResp {
-    repeated configpb.NodeAddress new_meta_list = 1;
+    repeated string new_meta_list = 1;
+    errorpb.Error error = 2;
+}
+
+message ReconcileReq {
+    configpb.ConfigNo group_no = 1 [(gogoproto.nullable) = false];
+    uint64 sn = 2;
+}
+
+message ReconcileResp {
     errorpb.Error error = 2;
 }
 
@@ -109,9 +118,9 @@ service DataService {
     rpc Get(GetReq) returns (GetResp);
     rpc Set(SetReq) returns (SetResp);
     rpc AppendLog(AppendLogReq) returns (AppendLogResp);
-    rpc Heartbeat(HeartbeatReq) returns (HeartbeatResp);
     rpc GetLatestSnapshot(GetLatestSnapshotReq) returns (GetLatestSnapshotResp);
     rpc GetLog(GetLogReq) returns (GetLogResp);
     rpc GroupChange(GroupChangeReq) returns (GroupChangeResp);
     rpc MetaServerChange(MetaServerChangeReq) returns (MetaServerChangeResp);
+    rpc Reconcile(ReconcileReq) returns (ReconcileResp);
 }

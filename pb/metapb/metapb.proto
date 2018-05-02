@@ -1,10 +1,10 @@
 syntax = "proto3";
 package metapb;
 
-import "gogoproto/gogo.proto";
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 
-import "configpb/configpb.proto";
-import "errorpb/errorpb.proto";
+import "github.com/choleraehyq/asuka/pb/configpb/configpb.proto";
+import "github.com/choleraehyq/asuka/pb/errorpb/errorpb.proto";
 
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.sizer_all) = true;
@@ -12,7 +12,8 @@ option (gogoproto.unmarshaler_all) = true;
 option (gogoproto.goproto_enum_prefix_all) = false;
 
 message GetLatestTermReq {
-    configpb.NodeAddress address = 1 [(gogoproto.nullable) = false];
+    string address = 1;
+    configpb.ConfigNo configno = 2 [(gogoproto.nullable) = false];
 }
 
 message GetLatestTermResp {
@@ -20,59 +21,46 @@ message GetLatestTermResp {
     errorpb.Error error = 2;
 }
 
-message JoinReq {
-    configpb.NodeAddress address = 1 [(gogoproto.nullable) = false];
+message CreateGroupReq {
+    string group_id = 1;
 }
 
-message JoinResp {
+message CreateGroupResp {
     configpb.GroupInfo group_info = 1 [(gogoproto.nullable) = false];
 }
 
-message NeedSplitReq {
-    configpb.ConfigNo group_no = 1 [(gogoproto.nullable) = false];
+message JoinReq {
+    string address = 1;
 }
 
-message NeedSplitResp {
-    repeated configpb.NodeAddress new_node = 1 [(gogoproto.nullable) = false];
+message JoinResp {}
+
+message HeartbeatReq {
+    string addr = 1;
 }
 
-message DoSplitReq {
-    configpb.ConfigNo group_no = 1 [(gogoproto.nullable) = false];
-    bytes split_key = 2;
-}
-
-message DoSplitResp {
-    errorpb.Error error = 1 [(gogoproto.nullable) = false];
-}
-
-enum ConfChangeType {
-    ADD_SECONDARY = 0;
-    REMOVE_SECONDARY = 1;
-    CHANGE_PRIMARY = 2;
-}
-
-message ConfChangeReq {
-    configpb.GroupInfo new_group_info = 2 [(gogoproto.nullable) = false];
-    ConfChangeType type = 3;
-}
-
-message ConfChangeResp {
-    configpb.GroupInfo new_group_info = 2 [(gogoproto.nullable) = false];
-}
+message HeartbeatResp {}
 
 message QueryLocationReq {
-    bytes key = 1;
+    string group_name = 1;
 }
 
 message QueryLocationResp {
     configpb.GroupInfo group_info = 1 [(gogoproto.nullable) = false];
 }
 
+message UpgradeLearnerReq {
+    string addr = 1;
+    configpb.ConfigNo config_no = 2;
+}
+
+message UpgradeLearnerResp {}
+
 service MetaService {
     rpc GetLatestTerm(GetLatestTermReq) returns (GetLatestTermResp);
+    rpc CreateGroup(CreateGroupReq) returns (CreateGroupResp);
     rpc Join(JoinReq) returns (JoinResp);
-    rpc NeedSplit(NeedSplitReq) returns (NeedSplitResp);
-    rpc DoSplit(DoSplitReq) returns (DoSplitResp);
-    rpc ConfChange(ConfChangeReq) returns (ConfChangeResp);
+    rpc Heartbeat(HeartbeatReq) returns (HeartbeatResp);
     rpc QueryLocation(QueryLocationReq) returns (QueryLocationResp);
+    rpc UpgradeLearner(UpgradeLearnerReq) returns (UpgradeLearnerResp);
 }

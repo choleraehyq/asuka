@@ -8,13 +8,15 @@ import (
 
 	log "github.com/sirupsen/logrus"
 	"github.com/choleraehyq/asuka/cm"
+	"github.com/choleraehyq/asuka/utils"
 )
 
 var (
-	addrRPC                     = flag.String("rpc-addr", "http://127.0.0.1:7923", "addr rpc service listening")
-	addrEtcd                  = flag.String("etcd-addr", "http://127.0.0.1:2379", "etcd cluster address, separate with comma")
+	addrRPC                     = flag.String("rpc-addr", "127.0.0.1:9876", "addr rpc service listening")
+	addrEtcd                  = flag.String("etcd-addr", "127.0.0.1:2379", "etcd cluster address, separate with comma")
+	replicaNumber = flag.Int("replica-number", 2, "replica number of each PacificA instance")
 	logFile                     = flag.String("log-file", "", "The external log file. Default log to console.")
-	logLevel                    = flag.String("log-level", "info", "The log level")
+	logLevel                    = flag.String("log-level", "debug", "The log level")
 )
 
 func main() {
@@ -29,6 +31,8 @@ func main() {
 		log.SetOutput(file)
 	}
 
+	log.AddHook(&utils.ContextHook{})
+	log.SetFormatter(&utils.TextFormatter{})
 	lvl, err := log.ParseLevel(*logLevel)
 	if err != nil {
 		log.Fatalf("log-level %s is invalid level name", *logLevel)
@@ -72,5 +76,6 @@ func parseCfg() *cm.Cfg {
 	return &cm.Cfg{
 		RpcAddr: *addrRPC,
 		EtcdAddr: *addrEtcd,
+		ReplicaNum: *replicaNumber,
 	}
 }

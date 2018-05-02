@@ -1,7 +1,7 @@
 syntax = "proto3";
 package configpb;
 
-import "gogoproto/gogo.proto";
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.sizer_all) = true;
@@ -9,24 +9,13 @@ option (gogoproto.unmarshaler_all) = true;
 option (gogoproto.goproto_enum_prefix_all) = false;
 
 message ConfigNo {
-    bytes group_id = 1; 
+    string group_id = 1;
     uint64 term = 2;
-}
-
-message KeyRange {
-    bytes start_key = 1;
-    bytes end_key = 2;
-}
-
-message NodeAddress {
-    string ip = 1;
-    string port = 2;
 }
 
 message GroupInfo {
     ConfigNo group_info = 1 [(gogoproto.nullable) = false];
-    KeyRange range = 2 [(gogoproto.nullable) = false];
-    NodeAddress primary = 3 [(gogoproto.nullable) = false];
-    repeated NodeAddress secondaries = 4;
-    repeated NodeAddress secondary_candidates = 5;
+    string primary = 2;
+    repeated string secondaries = 3;
+    repeated string learners = 4;
 }

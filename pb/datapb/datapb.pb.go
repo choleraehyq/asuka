@@ -15,8 +15,6 @@
 		Log
 		AppendLogReq
 		AppendLogResp
-		HeartbeatReq
-		HeartbeatResp
 		GetLatestSnapshotReq
 		GetLatestSnapshotResp
 		GetLogReq
@@ -25,6 +23,8 @@
 		GroupChangeResp
 		MetaServerChangeReq
 		MetaServerChangeResp
+		ReconcileReq
+		ReconcileResp
 */
 package datapb
 
@@ -32,9 +32,9 @@ import proto "github.com/golang/protobuf/proto"
 import fmt "fmt"
 import math "math"
 import _ "github.com/gogo/protobuf/gogoproto"
-import configpb "configpb"
-import errorpb "errorpb"
-import storagepb "storagepb"
+import configpb "github.com/choleraehyq/asuka/pb/configpb"
+import errorpb "github.com/choleraehyq/asuka/pb/errorpb"
+import storagepb "github.com/choleraehyq/asuka/pb/storagepb"
 
 import io "io"
 
@@ -53,23 +53,33 @@ const _ = proto.ProtoPackageIsVersion2 // please upgrade the proto package
 type GroupChangeType int32
 
 const (
-	ADD_NODE    GroupChangeType = 0
-	REMOVE_NODE GroupChangeType = 1
-	NEED_SPLIT  GroupChangeType = 2
-	DO_SPLIT    GroupChangeType = 3
+	// change self to learner or secondary; use CHANGE_TO_PRIMARY when changing to primary
+	// other replica info may also change
+	CHANGE_NODE GroupChangeType = 0
+	// create new replica group
+	CREATE_GROUP GroupChangeType = 1
+	// join an existing group as learner
+	ADD_TO_GROUP GroupChangeType = 2
+	// delete self from an existing group
+	// currently not used
+	REMOVE_FROM_GROUP GroupChangeType = 3
+	// change self to primary replica
+	CHANGE_TO_PRIMARY GroupChangeType = 4
 )
 
 var GroupChangeType_name = map[int32]string{
-	0: "ADD_NODE",
-	1: "REMOVE_NODE",
-	2: "NEED_SPLIT",
-	3: "DO_SPLIT",
+	0: "CHANGE_NODE",
+	1: "CREATE_GROUP",
+	2: "ADD_TO_GROUP",
+	3: "REMOVE_FROM_GROUP",
+	4: "CHANGE_TO_PRIMARY",
 }
 var GroupChangeType_value = map[string]int32{
-	"ADD_NODE":    0,
-	"REMOVE_NODE": 1,
-	"NEED_SPLIT":  2,
-	"DO_SPLIT":    3,
+	"CHANGE_NODE":       0,
+	"CREATE_GROUP":      1,
+	"ADD_TO_GROUP":      2,
+	"REMOVE_FROM_GROUP": 3,
+	"CHANGE_TO_PRIMARY": 4,
 }
 
 func (x GroupChangeType) String() string {
@@ -78,13 +88,21 @@ func (x GroupChangeType) String() string {
 func (GroupChangeType) EnumDescriptor() ([]byte, []int) { return fileDescriptorDatapb, []int{0} }
 
 type GetReq struct {
-	Key []byte `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	GroupId string `protobuf:"bytes,1,opt,name=group_id,json=groupId,proto3" json:"group_id,omitempty"`
+	Key     []byte `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
 }
 
 func (m *GetReq) Reset()                    { *m = GetReq{} }
 func (m *GetReq) String() string            { return proto.CompactTextString(m) }
 func (*GetReq) ProtoMessage()               {}
 func (*GetReq) Descriptor() ([]byte, []int) { return fileDescriptorDatapb, []int{0} }
+
+func (m *GetReq) GetGroupId() string {
+	if m != nil {
+		return m.GroupId
+	}
+	return ""
+}
 
 func (m *GetReq) GetKey() []byte {
 	if m != nil {
@@ -118,13 +136,21 @@ func (m *GetResp) GetError() *errorpb.Error {
 }
 
 type SetReq struct {
-	Pair storagepb.KVPair `protobuf:"bytes,1,opt,name=pair" json:"pair"`
+	GroupId string           `protobuf:"bytes,1,opt,name=group_id,json=groupId,proto3" json:"group_id,omitempty"`
+	Pair    storagepb.KVPair `protobuf:"bytes,2,opt,name=pair" json:"pair"`
 }
 
 func (m *SetReq) Reset()                    { *m = SetReq{} }
 func (m *SetReq) String() string            { return proto.CompactTextString(m) }
 func (*SetReq) ProtoMessage()               {}
 func (*SetReq) Descriptor() ([]byte, []int) { return fileDescriptorDatapb, []int{2} }
+
+func (m *SetReq) GetGroupId() string {
+	if m != nil {
+		return m.GroupId
+	}
+	return ""
+}
 
 func (m *SetReq) GetPair() storagepb.KVPair {
 	if m != nil {
@@ -150,9 +176,7 @@ func (m *SetResp) GetError() *errorpb.Error {
 }
 
 type Log struct {
-	Key      []byte `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
-	OldValue []byte `protobuf:"bytes,2,opt,name=old_value,json=oldValue,proto3" json:"old_value,omitempty"`
-	NewValue []byte `protobuf:"bytes,3,opt,name=new_value,json=newValue,proto3" json:"new_value,omitempty"`
+	Kv *storagepb.KVPair `protobuf:"bytes,1,opt,name=kv" json:"kv,omitempty"`
 }
 
 func (m *Log) Reset()                    { *m = Log{} }
@@ -160,31 +184,18 @@ func (m *Log) String() string            { return proto.CompactTextString(m) }
 func (*Log) ProtoMessage()               {}
 func (*Log) Descriptor() ([]byte, []int) { return fileDescriptorDatapb, []int{4} }
 
-func (m *Log) GetKey() []byte {
+func (m *Log) GetKv() *storagepb.KVPair {
 	if m != nil {
-		return m.Key
-	}
-	return nil
-}
-
-func (m *Log) GetOldValue() []byte {
-	if m != nil {
-		return m.OldValue
-	}
-	return nil
-}
-
-func (m *Log) GetNewValue() []byte {
-	if m != nil {
-		return m.NewValue
+		return m.Kv
 	}
 	return nil
 }
 
 type AppendLogReq struct {
-	GroupNo configpb.ConfigNo `protobuf:"bytes,1,opt,name=group_no,json=groupNo" json:"group_no"`
-	Sn      uint64            `protobuf:"varint,2,opt,name=sn,proto3" json:"sn,omitempty"`
-	Log     *Log              `protobuf:"bytes,3,opt,name=log" json:"log,omitempty"`
+	GroupNo  configpb.ConfigNo `protobuf:"bytes,1,opt,name=group_no,json=groupNo" json:"group_no"`
+	Sn       uint64            `protobuf:"varint,2,opt,name=sn,proto3" json:"sn,omitempty"`
+	Log      *Log              `protobuf:"bytes,3,opt,name=log" json:"log,omitempty"`
+	CommitSn uint64            `protobuf:"varint,4,opt,name=commit_sn,json=commitSn,proto3" json:"commit_sn,omitempty"`
 }
 
 func (m *AppendLogReq) Reset()                    { *m = AppendLogReq{} }
@@ -213,22 +224,22 @@ func (m *AppendLogReq) GetLog() *Log {
 	return nil
 }
 
+func (m *AppendLogReq) GetCommitSn() uint64 {
+	if m != nil {
+		return m.CommitSn
+	}
+	return 0
+}
+
 type AppendLogResp struct {
-	GroupNo configpb.ConfigNo `protobuf:"bytes,1,opt,name=group_no,json=groupNo" json:"group_no"`
-	Sn      uint64            `protobuf:"varint,3,opt,name=sn,proto3" json:"sn,omitempty"`
+	Sn    uint64         `protobuf:"varint,3,opt,name=sn,proto3" json:"sn,omitempty"`
+	Error *errorpb.Error `protobuf:"bytes,100,opt,name=error" json:"error,omitempty"`
 }
 
 func (m *AppendLogResp) Reset()                    { *m = AppendLogResp{} }
 func (m *AppendLogResp) String() string            { return proto.CompactTextString(m) }
 func (*AppendLogResp) ProtoMessage()               {}
 func (*AppendLogResp) Descriptor() ([]byte, []int) { return fileDescriptorDatapb, []int{6} }
-
-func (m *AppendLogResp) GetGroupNo() configpb.ConfigNo {
-	if m != nil {
-		return m.GroupNo
-	}
-	return configpb.ConfigNo{}
-}
 
 func (m *AppendLogResp) GetSn() uint64 {
 	if m != nil {
@@ -237,40 +248,7 @@ func (m *AppendLogResp) GetSn() uint64 {
 	return 0
 }
 
-type HeartbeatReq struct {
-	GroupNo configpb.ConfigNo `protobuf:"bytes,1,opt,name=group_no,json=groupNo" json:"group_no"`
-}
-
-func (m *HeartbeatReq) Reset()                    { *m = HeartbeatReq{} }
-func (m *HeartbeatReq) String() string            { return proto.CompactTextString(m) }
-func (*HeartbeatReq) ProtoMessage()               {}
-func (*HeartbeatReq) Descriptor() ([]byte, []int) { return fileDescriptorDatapb, []int{7} }
-
-func (m *HeartbeatReq) GetGroupNo() configpb.ConfigNo {
-	if m != nil {
-		return m.GroupNo
-	}
-	return configpb.ConfigNo{}
-}
-
-type HeartbeatResp struct {
-	GroupNo configpb.ConfigNo `protobuf:"bytes,1,opt,name=group_no,json=groupNo" json:"group_no"`
-	Error   *errorpb.Error    `protobuf:"bytes,2,opt,name=error" json:"error,omitempty"`
-}
-
-func (m *HeartbeatResp) Reset()                    { *m = HeartbeatResp{} }
-func (m *HeartbeatResp) String() string            { return proto.CompactTextString(m) }
-func (*HeartbeatResp) ProtoMessage()               {}
-func (*HeartbeatResp) Descriptor() ([]byte, []int) { return fileDescriptorDatapb, []int{8} }
-
-func (m *HeartbeatResp) GetGroupNo() configpb.ConfigNo {
-	if m != nil {
-		return m.GroupNo
-	}
-	return configpb.ConfigNo{}
-}
-
-func (m *HeartbeatResp) GetError() *errorpb.Error {
+func (m *AppendLogResp) GetError() *errorpb.Error {
 	if m != nil {
 		return m.Error
 	}
@@ -279,13 +257,12 @@ func (m *HeartbeatResp) GetError() *errorpb.Error {
 
 type GetLatestSnapshotReq struct {
 	GroupNo configpb.ConfigNo `protobuf:"bytes,1,opt,name=group_no,json=groupNo" json:"group_no"`
-	Range   configpb.KeyRange `protobuf:"bytes,2,opt,name=range" json:"range"`
 }
 
 func (m *GetLatestSnapshotReq) Reset()                    { *m = GetLatestSnapshotReq{} }
 func (m *GetLatestSnapshotReq) String() string            { return proto.CompactTextString(m) }
 func (*GetLatestSnapshotReq) ProtoMessage()               {}
-func (*GetLatestSnapshotReq) Descriptor() ([]byte, []int) { return fileDescriptorDatapb, []int{9} }
+func (*GetLatestSnapshotReq) Descriptor() ([]byte, []int) { return fileDescriptorDatapb, []int{7} }
 
 func (m *GetLatestSnapshotReq) GetGroupNo() configpb.ConfigNo {
 	if m != nil {
@@ -294,23 +271,16 @@ func (m *GetLatestSnapshotReq) GetGroupNo() configpb.ConfigNo {
 	return configpb.ConfigNo{}
 }
 
-func (m *GetLatestSnapshotReq) GetRange() configpb.KeyRange {
-	if m != nil {
-		return m.Range
-	}
-	return configpb.KeyRange{}
-}
-
 type GetLatestSnapshotResp struct {
 	GroupNo  configpb.ConfigNo   `protobuf:"bytes,1,opt,name=group_no,json=groupNo" json:"group_no"`
 	Snapshot *storagepb.Snapshot `protobuf:"bytes,2,opt,name=snapshot" json:"snapshot,omitempty"`
-	Error    *errorpb.Error      `protobuf:"bytes,3,opt,name=error" json:"error,omitempty"`
+	Error    *errorpb.Error      `protobuf:"bytes,100,opt,name=error" json:"error,omitempty"`
 }
 
 func (m *GetLatestSnapshotResp) Reset()                    { *m = GetLatestSnapshotResp{} }
 func (m *GetLatestSnapshotResp) String() string            { return proto.CompactTextString(m) }
 func (*GetLatestSnapshotResp) ProtoMessage()               {}
-func (*GetLatestSnapshotResp) Descriptor() ([]byte, []int) { return fileDescriptorDatapb, []int{10} }
+func (*GetLatestSnapshotResp) Descriptor() ([]byte, []int) { return fileDescriptorDatapb, []int{8} }
 
 func (m *GetLatestSnapshotResp) GetGroupNo() configpb.ConfigNo {
 	if m != nil {
@@ -341,7 +311,7 @@ type GetLogReq struct {
 func (m *GetLogReq) Reset()                    { *m = GetLogReq{} }
 func (m *GetLogReq) String() string            { return proto.CompactTextString(m) }
 func (*GetLogReq) ProtoMessage()               {}
-func (*GetLogReq) Descriptor() ([]byte, []int) { return fileDescriptorDatapb, []int{11} }
+func (*GetLogReq) Descriptor() ([]byte, []int) { return fileDescriptorDatapb, []int{9} }
 
 func (m *GetLogReq) GetGroupNo() configpb.ConfigNo {
 	if m != nil {
@@ -358,22 +328,30 @@ func (m *GetLogReq) GetSn() uint64 {
 }
 
 type GetLogResp struct {
-	GroupNo configpb.ConfigNo `protobuf:"bytes,1,opt,name=group_no,json=groupNo" json:"group_no"`
-	Sn      uint64            `protobuf:"varint,2,opt,name=sn,proto3" json:"sn,omitempty"`
-	Log     *Log              `protobuf:"bytes,3,opt,name=log" json:"log,omitempty"`
-	Error   *errorpb.Error    `protobuf:"bytes,4,opt,name=error" json:"error,omitempty"`
+	PrepareSn uint64         `protobuf:"varint,1,opt,name=prepare_sn,json=prepareSn,proto3" json:"prepare_sn,omitempty"`
+	CommitSn  uint64         `protobuf:"varint,2,opt,name=commit_sn,json=commitSn,proto3" json:"commit_sn,omitempty"`
+	Sn        uint64         `protobuf:"varint,3,opt,name=sn,proto3" json:"sn,omitempty"`
+	Log       *Log           `protobuf:"bytes,4,opt,name=log" json:"log,omitempty"`
+	Error     *errorpb.Error `protobuf:"bytes,5,opt,name=error" json:"error,omitempty"`
 }
 
 func (m *GetLogResp) Reset()                    { *m = GetLogResp{} }
 func (m *GetLogResp) String() string            { return proto.CompactTextString(m) }
 func (*GetLogResp) ProtoMessage()               {}
-func (*GetLogResp) Descriptor() ([]byte, []int) { return fileDescriptorDatapb, []int{12} }
+func (*GetLogResp) Descriptor() ([]byte, []int) { return fileDescriptorDatapb, []int{10} }
 
-func (m *GetLogResp) GetGroupNo() configpb.ConfigNo {
+func (m *GetLogResp) GetPrepareSn() uint64 {
 	if m != nil {
-		return m.GroupNo
+		return m.PrepareSn
 	}
-	return configpb.ConfigNo{}
+	return 0
+}
+
+func (m *GetLogResp) GetCommitSn() uint64 {
+	if m != nil {
+		return m.CommitSn
+	}
+	return 0
 }
 
 func (m *GetLogResp) GetSn() uint64 {
@@ -398,18 +376,18 @@ func (m *GetLogResp) GetError() *errorpb.Error {
 }
 
 type GroupChangeReq struct {
-	NewGroupInfo *configpb.GroupInfo `protobuf:"bytes,1,opt,name=new_group_info,json=newGroupInfo" json:"new_group_info,omitempty"`
-	Reason       GroupChangeType     `protobuf:"varint,2,opt,name=reason,proto3,enum=datapb.GroupChangeType" json:"reason,omitempty"`
+	GroupInfo *configpb.GroupInfo `protobuf:"bytes,1,opt,name=group_info,json=groupInfo" json:"group_info,omitempty"`
+	Reason    GroupChangeType     `protobuf:"varint,2,opt,name=reason,proto3,enum=datapb.GroupChangeType" json:"reason,omitempty"`
 }
 
 func (m *GroupChangeReq) Reset()                    { *m = GroupChangeReq{} }
 func (m *GroupChangeReq) String() string            { return proto.CompactTextString(m) }
 func (*GroupChangeReq) ProtoMessage()               {}
-func (*GroupChangeReq) Descriptor() ([]byte, []int) { return fileDescriptorDatapb, []int{13} }
+func (*GroupChangeReq) Descriptor() ([]byte, []int) { return fileDescriptorDatapb, []int{11} }
 
-func (m *GroupChangeReq) GetNewGroupInfo() *configpb.GroupInfo {
+func (m *GroupChangeReq) GetGroupInfo() *configpb.GroupInfo {
 	if m != nil {
-		return m.NewGroupInfo
+		return m.GroupInfo
 	}
 	return nil
 }
@@ -418,25 +396,17 @@ func (m *GroupChangeReq) GetReason() GroupChangeType {
 	if m != nil {
 		return m.Reason
 	}
-	return ADD_NODE
+	return CHANGE_NODE
 }
 
 type GroupChangeResp struct {
-	NewGroupInfo *configpb.GroupInfo `protobuf:"bytes,1,opt,name=new_group_info,json=newGroupInfo" json:"new_group_info,omitempty"`
-	Error        *errorpb.Error      `protobuf:"bytes,2,opt,name=error" json:"error,omitempty"`
+	Error *errorpb.Error `protobuf:"bytes,2,opt,name=error" json:"error,omitempty"`
 }
 
 func (m *GroupChangeResp) Reset()                    { *m = GroupChangeResp{} }
 func (m *GroupChangeResp) String() string            { return proto.CompactTextString(m) }
 func (*GroupChangeResp) ProtoMessage()               {}
-func (*GroupChangeResp) Descriptor() ([]byte, []int) { return fileDescriptorDatapb, []int{14} }
-
-func (m *GroupChangeResp) GetNewGroupInfo() *configpb.GroupInfo {
-	if m != nil {
-		return m.NewGroupInfo
-	}
-	return nil
-}
+func (*GroupChangeResp) Descriptor() ([]byte, []int) { return fileDescriptorDatapb, []int{12} }
 
 func (m *GroupChangeResp) GetError() *errorpb.Error {
 	if m != nil {
@@ -446,15 +416,23 @@ func (m *GroupChangeResp) GetError() *errorpb.Error {
 }
 
 type MetaServerChangeReq struct {
-	NewMetaList []*configpb.NodeAddress `protobuf:"bytes,1,rep,name=new_meta_list,json=newMetaList" json:"new_meta_list,omitempty"`
+	Primary     string   `protobuf:"bytes,1,opt,name=primary,proto3" json:"primary,omitempty"`
+	NewMetaList []string `protobuf:"bytes,2,rep,name=new_meta_list,json=newMetaList" json:"new_meta_list,omitempty"`
 }
 
 func (m *MetaServerChangeReq) Reset()                    { *m = MetaServerChangeReq{} }
 func (m *MetaServerChangeReq) String() string            { return proto.CompactTextString(m) }
 func (*MetaServerChangeReq) ProtoMessage()               {}
-func (*MetaServerChangeReq) Descriptor() ([]byte, []int) { return fileDescriptorDatapb, []int{15} }
+func (*MetaServerChangeReq) Descriptor() ([]byte, []int) { return fileDescriptorDatapb, []int{13} }
 
-func (m *MetaServerChangeReq) GetNewMetaList() []*configpb.NodeAddress {
+func (m *MetaServerChangeReq) GetPrimary() string {
+	if m != nil {
+		return m.Primary
+	}
+	return ""
+}
+
+func (m *MetaServerChangeReq) GetNewMetaList() []string {
 	if m != nil {
 		return m.NewMetaList
 	}
@@ -462,16 +440,16 @@ func (m *MetaServerChangeReq) GetNewMetaList() []*configpb.NodeAddress {
 }
 
 type MetaServerChangeResp struct {
-	NewMetaList []*configpb.NodeAddress `protobuf:"bytes,1,rep,name=new_meta_list,json=newMetaList" json:"new_meta_list,omitempty"`
-	Error       *errorpb.Error          `protobuf:"bytes,2,opt,name=error" json:"error,omitempty"`
+	NewMetaList []string       `protobuf:"bytes,1,rep,name=new_meta_list,json=newMetaList" json:"new_meta_list,omitempty"`
+	Error       *errorpb.Error `protobuf:"bytes,2,opt,name=error" json:"error,omitempty"`
 }
 
 func (m *MetaServerChangeResp) Reset()                    { *m = MetaServerChangeResp{} }
 func (m *MetaServerChangeResp) String() string            { return proto.CompactTextString(m) }
 func (*MetaServerChangeResp) ProtoMessage()               {}
-func (*MetaServerChangeResp) Descriptor() ([]byte, []int) { return fileDescriptorDatapb, []int{16} }
+func (*MetaServerChangeResp) Descriptor() ([]byte, []int) { return fileDescriptorDatapb, []int{14} }
 
-func (m *MetaServerChangeResp) GetNewMetaList() []*configpb.NodeAddress {
+func (m *MetaServerChangeResp) GetNewMetaList() []string {
 	if m != nil {
 		return m.NewMetaList
 	}
@@ -479,6 +457,46 @@ func (m *MetaServerChangeResp) GetNewMetaList() []*configpb.NodeAddress {
 }
 
 func (m *MetaServerChangeResp) GetError() *errorpb.Error {
+	if m != nil {
+		return m.Error
+	}
+	return nil
+}
+
+type ReconcileReq struct {
+	GroupNo configpb.ConfigNo `protobuf:"bytes,1,opt,name=group_no,json=groupNo" json:"group_no"`
+	Sn      uint64            `protobuf:"varint,2,opt,name=sn,proto3" json:"sn,omitempty"`
+}
+
+func (m *ReconcileReq) Reset()                    { *m = ReconcileReq{} }
+func (m *ReconcileReq) String() string            { return proto.CompactTextString(m) }
+func (*ReconcileReq) ProtoMessage()               {}
+func (*ReconcileReq) Descriptor() ([]byte, []int) { return fileDescriptorDatapb, []int{15} }
+
+func (m *ReconcileReq) GetGroupNo() configpb.ConfigNo {
+	if m != nil {
+		return m.GroupNo
+	}
+	return configpb.ConfigNo{}
+}
+
+func (m *ReconcileReq) GetSn() uint64 {
+	if m != nil {
+		return m.Sn
+	}
+	return 0
+}
+
+type ReconcileResp struct {
+	Error *errorpb.Error `protobuf:"bytes,2,opt,name=error" json:"error,omitempty"`
+}
+
+func (m *ReconcileResp) Reset()                    { *m = ReconcileResp{} }
+func (m *ReconcileResp) String() string            { return proto.CompactTextString(m) }
+func (*ReconcileResp) ProtoMessage()               {}
+func (*ReconcileResp) Descriptor() ([]byte, []int) { return fileDescriptorDatapb, []int{16} }
+
+func (m *ReconcileResp) GetError() *errorpb.Error {
 	if m != nil {
 		return m.Error
 	}
@@ -493,8 +511,6 @@ func init() {
 	proto.RegisterType((*Log)(nil), "datapb.Log")
 	proto.RegisterType((*AppendLogReq)(nil), "datapb.AppendLogReq")
 	proto.RegisterType((*AppendLogResp)(nil), "datapb.AppendLogResp")
-	proto.RegisterType((*HeartbeatReq)(nil), "datapb.HeartbeatReq")
-	proto.RegisterType((*HeartbeatResp)(nil), "datapb.HeartbeatResp")
 	proto.RegisterType((*GetLatestSnapshotReq)(nil), "datapb.GetLatestSnapshotReq")
 	proto.RegisterType((*GetLatestSnapshotResp)(nil), "datapb.GetLatestSnapshotResp")
 	proto.RegisterType((*GetLogReq)(nil), "datapb.GetLogReq")
@@ -503,6 +519,8 @@ func init() {
 	proto.RegisterType((*GroupChangeResp)(nil), "datapb.GroupChangeResp")
 	proto.RegisterType((*MetaServerChangeReq)(nil), "datapb.MetaServerChangeReq")
 	proto.RegisterType((*MetaServerChangeResp)(nil), "datapb.MetaServerChangeResp")
+	proto.RegisterType((*ReconcileReq)(nil), "datapb.ReconcileReq")
+	proto.RegisterType((*ReconcileResp)(nil), "datapb.ReconcileResp")
 	proto.RegisterEnum("datapb.GroupChangeType", GroupChangeType_name, GroupChangeType_value)
 }
 func (m *GetReq) Marshal() (dAtA []byte, err error) {
@@ -520,8 +538,14 @@ func (m *GetReq) MarshalTo(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if len(m.Key) > 0 {
+	if len(m.GroupId) > 0 {
 		dAtA[i] = 0xa
+		i++
+		i = encodeVarintDatapb(dAtA, i, uint64(len(m.GroupId)))
+		i += copy(dAtA[i:], m.GroupId)
+	}
+	if len(m.Key) > 0 {
+		dAtA[i] = 0x12
 		i++
 		i = encodeVarintDatapb(dAtA, i, uint64(len(m.Key)))
 		i += copy(dAtA[i:], m.Key)
@@ -578,7 +602,13 @@ func (m *SetReq) MarshalTo(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	dAtA[i] = 0xa
+	if len(m.GroupId) > 0 {
+		dAtA[i] = 0xa
+		i++
+		i = encodeVarintDatapb(dAtA, i, uint64(len(m.GroupId)))
+		i += copy(dAtA[i:], m.GroupId)
+	}
+	dAtA[i] = 0x12
 	i++
 	i = encodeVarintDatapb(dAtA, i, uint64(m.Pair.Size()))
 	n2, err := m.Pair.MarshalTo(dAtA[i:])
@@ -632,23 +662,15 @@ func (m *Log) MarshalTo(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if len(m.Key) > 0 {
+	if m.Kv != nil {
 		dAtA[i] = 0xa
 		i++
-		i = encodeVarintDatapb(dAtA, i, uint64(len(m.Key)))
-		i += copy(dAtA[i:], m.Key)
-	}
-	if len(m.OldValue) > 0 {
-		dAtA[i] = 0x12
-		i++
-		i = encodeVarintDatapb(dAtA, i, uint64(len(m.OldValue)))
-		i += copy(dAtA[i:], m.OldValue)
-	}
-	if len(m.NewValue) > 0 {
-		dAtA[i] = 0x1a
-		i++
-		i = encodeVarintDatapb(dAtA, i, uint64(len(m.NewValue)))
-		i += copy(dAtA[i:], m.NewValue)
+		i = encodeVarintDatapb(dAtA, i, uint64(m.Kv.Size()))
+		n4, err := m.Kv.MarshalTo(dAtA[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n4
 	}
 	return i, nil
 }
@@ -671,11 +693,11 @@ func (m *AppendLogReq) MarshalTo(dAtA []byte) (int, error) {
 	dAtA[i] = 0xa
 	i++
 	i = encodeVarintDatapb(dAtA, i, uint64(m.GroupNo.Size()))
-	n4, err := m.GroupNo.MarshalTo(dAtA[i:])
+	n5, err := m.GroupNo.MarshalTo(dAtA[i:])
 	if err != nil {
 		return 0, err
 	}
-	i += n4
+	i += n5
 	if m.Sn != 0 {
 		dAtA[i] = 0x10
 		i++
@@ -685,11 +707,16 @@ func (m *AppendLogReq) MarshalTo(dAtA []byte) (int, error) {
 		dAtA[i] = 0x1a
 		i++
 		i = encodeVarintDatapb(dAtA, i, uint64(m.Log.Size()))
-		n5, err := m.Log.MarshalTo(dAtA[i:])
+		n6, err := m.Log.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n5
+		i += n6
+	}
+	if m.CommitSn != 0 {
+		dAtA[i] = 0x20
+		i++
+		i = encodeVarintDatapb(dAtA, i, uint64(m.CommitSn))
 	}
 	return i, nil
 }
@@ -709,80 +736,22 @@ func (m *AppendLogResp) MarshalTo(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	dAtA[i] = 0xa
-	i++
-	i = encodeVarintDatapb(dAtA, i, uint64(m.GroupNo.Size()))
-	n6, err := m.GroupNo.MarshalTo(dAtA[i:])
-	if err != nil {
-		return 0, err
-	}
-	i += n6
 	if m.Sn != 0 {
 		dAtA[i] = 0x18
 		i++
 		i = encodeVarintDatapb(dAtA, i, uint64(m.Sn))
 	}
-	return i, nil
-}
-
-func (m *HeartbeatReq) Marshal() (dAtA []byte, err error) {
-	size := m.Size()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *HeartbeatReq) MarshalTo(dAtA []byte) (int, error) {
-	var i int
-	_ = i
-	var l int
-	_ = l
-	dAtA[i] = 0xa
-	i++
-	i = encodeVarintDatapb(dAtA, i, uint64(m.GroupNo.Size()))
-	n7, err := m.GroupNo.MarshalTo(dAtA[i:])
-	if err != nil {
-		return 0, err
-	}
-	i += n7
-	return i, nil
-}
-
-func (m *HeartbeatResp) Marshal() (dAtA []byte, err error) {
-	size := m.Size()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *HeartbeatResp) MarshalTo(dAtA []byte) (int, error) {
-	var i int
-	_ = i
-	var l int
-	_ = l
-	dAtA[i] = 0xa
-	i++
-	i = encodeVarintDatapb(dAtA, i, uint64(m.GroupNo.Size()))
-	n8, err := m.GroupNo.MarshalTo(dAtA[i:])
-	if err != nil {
-		return 0, err
-	}
-	i += n8
 	if m.Error != nil {
-		dAtA[i] = 0x12
+		dAtA[i] = 0xa2
+		i++
+		dAtA[i] = 0x6
 		i++
 		i = encodeVarintDatapb(dAtA, i, uint64(m.Error.Size()))
-		n9, err := m.Error.MarshalTo(dAtA[i:])
+		n7, err := m.Error.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n9
+		i += n7
 	}
 	return i, nil
 }
@@ -805,19 +774,11 @@ func (m *GetLatestSnapshotReq) MarshalTo(dAtA []byte) (int, error) {
 	dAtA[i] = 0xa
 	i++
 	i = encodeVarintDatapb(dAtA, i, uint64(m.GroupNo.Size()))
-	n10, err := m.GroupNo.MarshalTo(dAtA[i:])
+	n8, err := m.GroupNo.MarshalTo(dAtA[i:])
 	if err != nil {
 		return 0, err
 	}
-	i += n10
-	dAtA[i] = 0x12
-	i++
-	i = encodeVarintDatapb(dAtA, i, uint64(m.Range.Size()))
-	n11, err := m.Range.MarshalTo(dAtA[i:])
-	if err != nil {
-		return 0, err
-	}
-	i += n11
+	i += n8
 	return i, nil
 }
 
@@ -839,30 +800,32 @@ func (m *GetLatestSnapshotResp) MarshalTo(dAtA []byte) (int, error) {
 	dAtA[i] = 0xa
 	i++
 	i = encodeVarintDatapb(dAtA, i, uint64(m.GroupNo.Size()))
-	n12, err := m.GroupNo.MarshalTo(dAtA[i:])
+	n9, err := m.GroupNo.MarshalTo(dAtA[i:])
 	if err != nil {
 		return 0, err
 	}
-	i += n12
+	i += n9
 	if m.Snapshot != nil {
 		dAtA[i] = 0x12
 		i++
 		i = encodeVarintDatapb(dAtA, i, uint64(m.Snapshot.Size()))
-		n13, err := m.Snapshot.MarshalTo(dAtA[i:])
+		n10, err := m.Snapshot.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n13
+		i += n10
 	}
 	if m.Error != nil {
-		dAtA[i] = 0x1a
+		dAtA[i] = 0xa2
+		i++
+		dAtA[i] = 0x6
 		i++
 		i = encodeVarintDatapb(dAtA, i, uint64(m.Error.Size()))
-		n14, err := m.Error.MarshalTo(dAtA[i:])
+		n11, err := m.Error.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n14
+		i += n11
 	}
 	return i, nil
 }
@@ -885,11 +848,11 @@ func (m *GetLogReq) MarshalTo(dAtA []byte) (int, error) {
 	dAtA[i] = 0xa
 	i++
 	i = encodeVarintDatapb(dAtA, i, uint64(m.GroupNo.Size()))
-	n15, err := m.GroupNo.MarshalTo(dAtA[i:])
+	n12, err := m.GroupNo.MarshalTo(dAtA[i:])
 	if err != nil {
 		return 0, err
 	}
-	i += n15
+	i += n12
 	if m.Sn != 0 {
 		dAtA[i] = 0x10
 		i++
@@ -913,38 +876,40 @@ func (m *GetLogResp) MarshalTo(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	dAtA[i] = 0xa
-	i++
-	i = encodeVarintDatapb(dAtA, i, uint64(m.GroupNo.Size()))
-	n16, err := m.GroupNo.MarshalTo(dAtA[i:])
-	if err != nil {
-		return 0, err
+	if m.PrepareSn != 0 {
+		dAtA[i] = 0x8
+		i++
+		i = encodeVarintDatapb(dAtA, i, uint64(m.PrepareSn))
 	}
-	i += n16
-	if m.Sn != 0 {
+	if m.CommitSn != 0 {
 		dAtA[i] = 0x10
+		i++
+		i = encodeVarintDatapb(dAtA, i, uint64(m.CommitSn))
+	}
+	if m.Sn != 0 {
+		dAtA[i] = 0x18
 		i++
 		i = encodeVarintDatapb(dAtA, i, uint64(m.Sn))
 	}
 	if m.Log != nil {
-		dAtA[i] = 0x1a
-		i++
-		i = encodeVarintDatapb(dAtA, i, uint64(m.Log.Size()))
-		n17, err := m.Log.MarshalTo(dAtA[i:])
-		if err != nil {
-			return 0, err
-		}
-		i += n17
-	}
-	if m.Error != nil {
 		dAtA[i] = 0x22
 		i++
-		i = encodeVarintDatapb(dAtA, i, uint64(m.Error.Size()))
-		n18, err := m.Error.MarshalTo(dAtA[i:])
+		i = encodeVarintDatapb(dAtA, i, uint64(m.Log.Size()))
+		n13, err := m.Log.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n18
+		i += n13
+	}
+	if m.Error != nil {
+		dAtA[i] = 0x2a
+		i++
+		i = encodeVarintDatapb(dAtA, i, uint64(m.Error.Size()))
+		n14, err := m.Error.MarshalTo(dAtA[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n14
 	}
 	return i, nil
 }
@@ -964,15 +929,15 @@ func (m *GroupChangeReq) MarshalTo(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if m.NewGroupInfo != nil {
+	if m.GroupInfo != nil {
 		dAtA[i] = 0xa
 		i++
-		i = encodeVarintDatapb(dAtA, i, uint64(m.NewGroupInfo.Size()))
-		n19, err := m.NewGroupInfo.MarshalTo(dAtA[i:])
+		i = encodeVarintDatapb(dAtA, i, uint64(m.GroupInfo.Size()))
+		n15, err := m.GroupInfo.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n19
+		i += n15
 	}
 	if m.Reason != 0 {
 		dAtA[i] = 0x10
@@ -997,25 +962,15 @@ func (m *GroupChangeResp) MarshalTo(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if m.NewGroupInfo != nil {
-		dAtA[i] = 0xa
-		i++
-		i = encodeVarintDatapb(dAtA, i, uint64(m.NewGroupInfo.Size()))
-		n20, err := m.NewGroupInfo.MarshalTo(dAtA[i:])
-		if err != nil {
-			return 0, err
-		}
-		i += n20
-	}
 	if m.Error != nil {
 		dAtA[i] = 0x12
 		i++
 		i = encodeVarintDatapb(dAtA, i, uint64(m.Error.Size()))
-		n21, err := m.Error.MarshalTo(dAtA[i:])
+		n16, err := m.Error.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n21
+		i += n16
 	}
 	return i, nil
 }
@@ -1035,16 +990,25 @@ func (m *MetaServerChangeReq) MarshalTo(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if len(m.Primary) > 0 {
+		dAtA[i] = 0xa
+		i++
+		i = encodeVarintDatapb(dAtA, i, uint64(len(m.Primary)))
+		i += copy(dAtA[i:], m.Primary)
+	}
 	if len(m.NewMetaList) > 0 {
-		for _, msg := range m.NewMetaList {
-			dAtA[i] = 0xa
+		for _, s := range m.NewMetaList {
+			dAtA[i] = 0x12
 			i++
-			i = encodeVarintDatapb(dAtA, i, uint64(msg.Size()))
-			n, err := msg.MarshalTo(dAtA[i:])
-			if err != nil {
-				return 0, err
+			l = len(s)
+			for l >= 1<<7 {
+				dAtA[i] = uint8(uint64(l)&0x7f | 0x80)
+				l >>= 7
+				i++
 			}
-			i += n
+			dAtA[i] = uint8(l)
+			i++
+			i += copy(dAtA[i:], s)
 		}
 	}
 	return i, nil
@@ -1066,26 +1030,88 @@ func (m *MetaServerChangeResp) MarshalTo(dAtA []byte) (int, error) {
 	var l int
 	_ = l
 	if len(m.NewMetaList) > 0 {
-		for _, msg := range m.NewMetaList {
+		for _, s := range m.NewMetaList {
 			dAtA[i] = 0xa
 			i++
-			i = encodeVarintDatapb(dAtA, i, uint64(msg.Size()))
-			n, err := msg.MarshalTo(dAtA[i:])
-			if err != nil {
-				return 0, err
+			l = len(s)
+			for l >= 1<<7 {
+				dAtA[i] = uint8(uint64(l)&0x7f | 0x80)
+				l >>= 7
+				i++
 			}
-			i += n
+			dAtA[i] = uint8(l)
+			i++
+			i += copy(dAtA[i:], s)
 		}
 	}
 	if m.Error != nil {
 		dAtA[i] = 0x12
 		i++
 		i = encodeVarintDatapb(dAtA, i, uint64(m.Error.Size()))
-		n22, err := m.Error.MarshalTo(dAtA[i:])
+		n17, err := m.Error.MarshalTo(dAtA[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n22
+		i += n17
+	}
+	return i, nil
+}
+
+func (m *ReconcileReq) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalTo(dAtA)
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *ReconcileReq) MarshalTo(dAtA []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	dAtA[i] = 0xa
+	i++
+	i = encodeVarintDatapb(dAtA, i, uint64(m.GroupNo.Size()))
+	n18, err := m.GroupNo.MarshalTo(dAtA[i:])
+	if err != nil {
+		return 0, err
+	}
+	i += n18
+	if m.Sn != 0 {
+		dAtA[i] = 0x10
+		i++
+		i = encodeVarintDatapb(dAtA, i, uint64(m.Sn))
+	}
+	return i, nil
+}
+
+func (m *ReconcileResp) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalTo(dAtA)
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *ReconcileResp) MarshalTo(dAtA []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if m.Error != nil {
+		dAtA[i] = 0x12
+		i++
+		i = encodeVarintDatapb(dAtA, i, uint64(m.Error.Size()))
+		n19, err := m.Error.MarshalTo(dAtA[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n19
 	}
 	return i, nil
 }
@@ -1102,6 +1128,10 @@ func encodeVarintDatapb(dAtA []byte, offset int, v uint64) int {
 func (m *GetReq) Size() (n int) {
 	var l int
 	_ = l
+	l = len(m.GroupId)
+	if l > 0 {
+		n += 1 + l + sovDatapb(uint64(l))
+	}
 	l = len(m.Key)
 	if l > 0 {
 		n += 1 + l + sovDatapb(uint64(l))
@@ -1126,6 +1156,10 @@ func (m *GetResp) Size() (n int) {
 func (m *SetReq) Size() (n int) {
 	var l int
 	_ = l
+	l = len(m.GroupId)
+	if l > 0 {
+		n += 1 + l + sovDatapb(uint64(l))
+	}
 	l = m.Pair.Size()
 	n += 1 + l + sovDatapb(uint64(l))
 	return n
@@ -1144,16 +1178,8 @@ func (m *SetResp) Size() (n int) {
 func (m *Log) Size() (n int) {
 	var l int
 	_ = l
-	l = len(m.Key)
-	if l > 0 {
-		n += 1 + l + sovDatapb(uint64(l))
-	}
-	l = len(m.OldValue)
-	if l > 0 {
-		n += 1 + l + sovDatapb(uint64(l))
-	}
-	l = len(m.NewValue)
-	if l > 0 {
+	if m.Kv != nil {
+		l = m.Kv.Size()
 		n += 1 + l + sovDatapb(uint64(l))
 	}
 	return n
@@ -1171,36 +1197,21 @@ func (m *AppendLogReq) Size() (n int) {
 		l = m.Log.Size()
 		n += 1 + l + sovDatapb(uint64(l))
 	}
+	if m.CommitSn != 0 {
+		n += 1 + sovDatapb(uint64(m.CommitSn))
+	}
 	return n
 }
 
 func (m *AppendLogResp) Size() (n int) {
 	var l int
 	_ = l
-	l = m.GroupNo.Size()
-	n += 1 + l + sovDatapb(uint64(l))
 	if m.Sn != 0 {
 		n += 1 + sovDatapb(uint64(m.Sn))
 	}
-	return n
-}
-
-func (m *HeartbeatReq) Size() (n int) {
-	var l int
-	_ = l
-	l = m.GroupNo.Size()
-	n += 1 + l + sovDatapb(uint64(l))
-	return n
-}
-
-func (m *HeartbeatResp) Size() (n int) {
-	var l int
-	_ = l
-	l = m.GroupNo.Size()
-	n += 1 + l + sovDatapb(uint64(l))
 	if m.Error != nil {
 		l = m.Error.Size()
-		n += 1 + l + sovDatapb(uint64(l))
+		n += 2 + l + sovDatapb(uint64(l))
 	}
 	return n
 }
@@ -1209,8 +1220,6 @@ func (m *GetLatestSnapshotReq) Size() (n int) {
 	var l int
 	_ = l
 	l = m.GroupNo.Size()
-	n += 1 + l + sovDatapb(uint64(l))
-	l = m.Range.Size()
 	n += 1 + l + sovDatapb(uint64(l))
 	return n
 }
@@ -1226,7 +1235,7 @@ func (m *GetLatestSnapshotResp) Size() (n int) {
 	}
 	if m.Error != nil {
 		l = m.Error.Size()
-		n += 1 + l + sovDatapb(uint64(l))
+		n += 2 + l + sovDatapb(uint64(l))
 	}
 	return n
 }
@@ -1245,8 +1254,12 @@ func (m *GetLogReq) Size() (n int) {
 func (m *GetLogResp) Size() (n int) {
 	var l int
 	_ = l
-	l = m.GroupNo.Size()
-	n += 1 + l + sovDatapb(uint64(l))
+	if m.PrepareSn != 0 {
+		n += 1 + sovDatapb(uint64(m.PrepareSn))
+	}
+	if m.CommitSn != 0 {
+		n += 1 + sovDatapb(uint64(m.CommitSn))
+	}
 	if m.Sn != 0 {
 		n += 1 + sovDatapb(uint64(m.Sn))
 	}
@@ -1264,8 +1277,8 @@ func (m *GetLogResp) Size() (n int) {
 func (m *GroupChangeReq) Size() (n int) {
 	var l int
 	_ = l
-	if m.NewGroupInfo != nil {
-		l = m.NewGroupInfo.Size()
+	if m.GroupInfo != nil {
+		l = m.GroupInfo.Size()
 		n += 1 + l + sovDatapb(uint64(l))
 	}
 	if m.Reason != 0 {
@@ -1277,10 +1290,6 @@ func (m *GroupChangeReq) Size() (n int) {
 func (m *GroupChangeResp) Size() (n int) {
 	var l int
 	_ = l
-	if m.NewGroupInfo != nil {
-		l = m.NewGroupInfo.Size()
-		n += 1 + l + sovDatapb(uint64(l))
-	}
 	if m.Error != nil {
 		l = m.Error.Size()
 		n += 1 + l + sovDatapb(uint64(l))
@@ -1291,9 +1300,13 @@ func (m *GroupChangeResp) Size() (n int) {
 func (m *MetaServerChangeReq) Size() (n int) {
 	var l int
 	_ = l
+	l = len(m.Primary)
+	if l > 0 {
+		n += 1 + l + sovDatapb(uint64(l))
+	}
 	if len(m.NewMetaList) > 0 {
-		for _, e := range m.NewMetaList {
-			l = e.Size()
+		for _, s := range m.NewMetaList {
+			l = len(s)
 			n += 1 + l + sovDatapb(uint64(l))
 		}
 	}
@@ -1304,11 +1317,32 @@ func (m *MetaServerChangeResp) Size() (n int) {
 	var l int
 	_ = l
 	if len(m.NewMetaList) > 0 {
-		for _, e := range m.NewMetaList {
-			l = e.Size()
+		for _, s := range m.NewMetaList {
+			l = len(s)
 			n += 1 + l + sovDatapb(uint64(l))
 		}
 	}
+	if m.Error != nil {
+		l = m.Error.Size()
+		n += 1 + l + sovDatapb(uint64(l))
+	}
+	return n
+}
+
+func (m *ReconcileReq) Size() (n int) {
+	var l int
+	_ = l
+	l = m.GroupNo.Size()
+	n += 1 + l + sovDatapb(uint64(l))
+	if m.Sn != 0 {
+		n += 1 + sovDatapb(uint64(m.Sn))
+	}
+	return n
+}
+
+func (m *ReconcileResp) Size() (n int) {
+	var l int
+	_ = l
 	if m.Error != nil {
 		l = m.Error.Size()
 		n += 1 + l + sovDatapb(uint64(l))
@@ -1359,6 +1393,35 @@ func (m *GetReq) Unmarshal(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field GroupId", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowDatapb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthDatapb
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.GroupId = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
 			}
@@ -1555,6 +1618,35 @@ func (m *SetReq) Unmarshal(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field GroupId", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowDatapb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthDatapb
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.GroupId = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Pair", wireType)
 			}
 			var msglen int
@@ -1718,9 +1810,9 @@ func (m *Log) Unmarshal(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Kv", wireType)
 			}
-			var byteLen int
+			var msglen int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowDatapb
@@ -1730,83 +1822,23 @@ func (m *Log) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				byteLen |= (int(b) & 0x7F) << shift
+				msglen |= (int(b) & 0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			if byteLen < 0 {
+			if msglen < 0 {
 				return ErrInvalidLengthDatapb
 			}
-			postIndex := iNdEx + byteLen
+			postIndex := iNdEx + msglen
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Key = append(m.Key[:0], dAtA[iNdEx:postIndex]...)
-			if m.Key == nil {
-				m.Key = []byte{}
+			if m.Kv == nil {
+				m.Kv = &storagepb.KVPair{}
 			}
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field OldValue", wireType)
-			}
-			var byteLen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowDatapb
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				byteLen |= (int(b) & 0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if byteLen < 0 {
-				return ErrInvalidLengthDatapb
-			}
-			postIndex := iNdEx + byteLen
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.OldValue = append(m.OldValue[:0], dAtA[iNdEx:postIndex]...)
-			if m.OldValue == nil {
-				m.OldValue = []byte{}
-			}
-			iNdEx = postIndex
-		case 3:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field NewValue", wireType)
-			}
-			var byteLen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowDatapb
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				byteLen |= (int(b) & 0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if byteLen < 0 {
-				return ErrInvalidLengthDatapb
-			}
-			postIndex := iNdEx + byteLen
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.NewValue = append(m.NewValue[:0], dAtA[iNdEx:postIndex]...)
-			if m.NewValue == nil {
-				m.NewValue = []byte{}
+			if err := m.Kv.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
 			}
 			iNdEx = postIndex
 		default:
@@ -1941,6 +1973,25 @@ func (m *AppendLogReq) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CommitSn", wireType)
+			}
+			m.CommitSn = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowDatapb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.CommitSn |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipDatapb(dAtA[iNdEx:])
@@ -1991,36 +2042,6 @@ func (m *AppendLogResp) Unmarshal(dAtA []byte) error {
 			return fmt.Errorf("proto: AppendLogResp: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field GroupNo", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowDatapb
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= (int(b) & 0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthDatapb
-			}
-			postIndex := iNdEx + msglen
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if err := m.GroupNo.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
 		case 3:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Sn", wireType)
@@ -2040,167 +2061,7 @@ func (m *AppendLogResp) Unmarshal(dAtA []byte) error {
 					break
 				}
 			}
-		default:
-			iNdEx = preIndex
-			skippy, err := skipDatapb(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if skippy < 0 {
-				return ErrInvalidLengthDatapb
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *HeartbeatReq) Unmarshal(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowDatapb
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= (uint64(b) & 0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: HeartbeatReq: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: HeartbeatReq: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field GroupNo", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowDatapb
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= (int(b) & 0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthDatapb
-			}
-			postIndex := iNdEx + msglen
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if err := m.GroupNo.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		default:
-			iNdEx = preIndex
-			skippy, err := skipDatapb(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if skippy < 0 {
-				return ErrInvalidLengthDatapb
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *HeartbeatResp) Unmarshal(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowDatapb
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= (uint64(b) & 0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: HeartbeatResp: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: HeartbeatResp: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field GroupNo", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowDatapb
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= (int(b) & 0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthDatapb
-			}
-			postIndex := iNdEx + msglen
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if err := m.GroupNo.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 2:
+		case 100:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Error", wireType)
 			}
@@ -2310,36 +2171,6 @@ func (m *GetLatestSnapshotReq) Unmarshal(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if err := m.GroupNo.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Range", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowDatapb
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= (int(b) & 0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthDatapb
-			}
-			postIndex := iNdEx + msglen
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if err := m.Range.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -2456,7 +2287,7 @@ func (m *GetLatestSnapshotResp) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 3:
+		case 100:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Error", wireType)
 			}
@@ -2639,10 +2470,10 @@ func (m *GetLogResp) Unmarshal(dAtA []byte) error {
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field GroupNo", wireType)
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field PrepareSn", wireType)
 			}
-			var msglen int
+			m.PrepareSn = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowDatapb
@@ -2652,23 +2483,31 @@ func (m *GetLogResp) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				msglen |= (int(b) & 0x7F) << shift
+				m.PrepareSn |= (uint64(b) & 0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			if msglen < 0 {
-				return ErrInvalidLengthDatapb
-			}
-			postIndex := iNdEx + msglen
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if err := m.GroupNo.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
 		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CommitSn", wireType)
+			}
+			m.CommitSn = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowDatapb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.CommitSn |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Sn", wireType)
 			}
@@ -2687,7 +2526,7 @@ func (m *GetLogResp) Unmarshal(dAtA []byte) error {
 					break
 				}
 			}
-		case 3:
+		case 4:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Log", wireType)
 			}
@@ -2720,7 +2559,7 @@ func (m *GetLogResp) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 4:
+		case 5:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Error", wireType)
 			}
@@ -2805,7 +2644,7 @@ func (m *GroupChangeReq) Unmarshal(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field NewGroupInfo", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field GroupInfo", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -2829,10 +2668,10 @@ func (m *GroupChangeReq) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.NewGroupInfo == nil {
-				m.NewGroupInfo = &configpb.GroupInfo{}
+			if m.GroupInfo == nil {
+				m.GroupInfo = &configpb.GroupInfo{}
 			}
-			if err := m.NewGroupInfo.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+			if err := m.GroupInfo.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -2905,39 +2744,6 @@ func (m *GroupChangeResp) Unmarshal(dAtA []byte) error {
 			return fmt.Errorf("proto: GroupChangeResp: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field NewGroupInfo", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowDatapb
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= (int(b) & 0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthDatapb
-			}
-			postIndex := iNdEx + msglen
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.NewGroupInfo == nil {
-				m.NewGroupInfo = &configpb.GroupInfo{}
-			}
-			if err := m.NewGroupInfo.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Error", wireType)
@@ -3023,9 +2829,9 @@ func (m *MetaServerChangeReq) Unmarshal(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field NewMetaList", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Primary", wireType)
 			}
-			var msglen int
+			var stringLen uint64
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowDatapb
@@ -3035,22 +2841,49 @@ func (m *MetaServerChangeReq) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				msglen |= (int(b) & 0x7F) << shift
+				stringLen |= (uint64(b) & 0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			if msglen < 0 {
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
 				return ErrInvalidLengthDatapb
 			}
-			postIndex := iNdEx + msglen
+			postIndex := iNdEx + intStringLen
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.NewMetaList = append(m.NewMetaList, &configpb.NodeAddress{})
-			if err := m.NewMetaList[len(m.NewMetaList)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
+			m.Primary = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field NewMetaList", wireType)
 			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowDatapb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthDatapb
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.NewMetaList = append(m.NewMetaList, string(dAtA[iNdEx:postIndex]))
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -3106,6 +2939,35 @@ func (m *MetaServerChangeResp) Unmarshal(dAtA []byte) error {
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NewMetaList", wireType)
 			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowDatapb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthDatapb
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.NewMetaList = append(m.NewMetaList, string(dAtA[iNdEx:postIndex]))
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Error", wireType)
+			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
@@ -3128,11 +2990,162 @@ func (m *MetaServerChangeResp) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.NewMetaList = append(m.NewMetaList, &configpb.NodeAddress{})
-			if err := m.NewMetaList[len(m.NewMetaList)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+			if m.Error == nil {
+				m.Error = &errorpb.Error{}
+			}
+			if err := m.Error.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipDatapb(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthDatapb
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *ReconcileReq) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowDatapb
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: ReconcileReq: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: ReconcileReq: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field GroupNo", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowDatapb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthDatapb
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := m.GroupNo.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Sn", wireType)
+			}
+			m.Sn = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowDatapb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Sn |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipDatapb(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthDatapb
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *ReconcileResp) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowDatapb
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: ReconcileResp: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: ReconcileResp: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
 		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Error", wireType)
@@ -3295,56 +3308,61 @@ var (
 func init() { proto.RegisterFile("datapb/datapb.proto", fileDescriptorDatapb) }
 
 var fileDescriptorDatapb = []byte{
-	// 806 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xac, 0x56, 0xd1, 0x4e, 0x32, 0x47,
-	0x14, 0x66, 0x59, 0x44, 0x38, 0x8b, 0x88, 0x03, 0x54, 0x8b, 0xff, 0x4f, 0xcd, 0xa6, 0x69, 0x4c,
-	0x9b, 0xb0, 0x09, 0xa6, 0x49, 0x7b, 0xd3, 0x44, 0x85, 0x50, 0x23, 0x22, 0x5d, 0x8c, 0xb7, 0x64,
-	0x91, 0x71, 0xa5, 0xa5, 0x3b, 0xd3, 0x99, 0x55, 0x62, 0xda, 0xe7, 0x68, 0x7a, 0xdf, 0x97, 0xf1,
-	0xd2, 0x27, 0x68, 0x5a, 0x7d, 0x91, 0x66, 0x66, 0x76, 0x97, 0x45, 0x28, 0x21, 0xd8, 0xab, 0x9d,
-	0x39, 0xdf, 0x39, 0xe7, 0x3b, 0xdf, 0xcc, 0xd9, 0xb3, 0x0b, 0xc5, 0xa1, 0xe3, 0x3b, 0x74, 0x60,
-	0xa9, 0x47, 0x8d, 0x32, 0xe2, 0x13, 0x94, 0x56, 0xbb, 0x4a, 0xc9, 0x25, 0x2e, 0x91, 0x26, 0x4b,
-	0xac, 0x14, 0x5a, 0xd9, 0xbd, 0x21, 0xde, 0xed, 0xc8, 0xa5, 0x03, 0x2b, 0x5c, 0x04, 0x40, 0x19,
-	0x33, 0x46, 0x18, 0x1d, 0x58, 0xc1, 0x33, 0x30, 0x7f, 0xca, 0x7d, 0xc2, 0x1c, 0x17, 0xd3, 0x81,
-	0x15, 0xad, 0x14, 0x64, 0x56, 0x20, 0xdd, 0xc2, 0xbe, 0x8d, 0x7f, 0x41, 0x05, 0xd0, 0x7f, 0xc2,
-	0x8f, 0x7b, 0xda, 0x81, 0x76, 0x98, 0xb3, 0xc5, 0xd2, 0x6c, 0xc2, 0xa6, 0xc4, 0x38, 0x45, 0x25,
-	0xd8, 0x78, 0x70, 0xc6, 0xf7, 0x38, 0x80, 0xd5, 0x06, 0x7d, 0x0e, 0x1b, 0x92, 0x68, 0x2f, 0x79,
-	0xa0, 0x1d, 0x1a, 0xf5, 0x7c, 0x2d, 0xa4, 0x6d, 0x8a, 0xa7, 0xad, 0x40, 0xf3, 0x6b, 0x48, 0xf7,
-	0x14, 0xc5, 0x57, 0x90, 0xa2, 0xce, 0x88, 0xc9, 0x24, 0x46, 0x7d, 0xa7, 0x36, 0x2d, 0xe6, 0xfc,
-	0xba, 0xeb, 0x8c, 0xd8, 0x49, 0xea, 0xe9, 0xaf, 0xcf, 0x12, 0xb6, 0x74, 0x32, 0x2d, 0xd8, 0xec,
-	0x05, 0xec, 0x11, 0x8f, 0xb6, 0x8c, 0xe7, 0x07, 0xd0, 0xdb, 0xc4, 0x9d, 0xd7, 0x81, 0xf6, 0x21,
-	0x4b, 0xc6, 0xc3, 0xbe, 0x12, 0x90, 0x94, 0xf6, 0x0c, 0x19, 0x0f, 0xaf, 0xa5, 0x86, 0x7d, 0xc8,
-	0x7a, 0x78, 0x12, 0x80, 0xba, 0x02, 0x3d, 0x3c, 0x91, 0xa0, 0xc9, 0x20, 0x77, 0x4c, 0x29, 0xf6,
-	0x86, 0x6d, 0xe2, 0x0a, 0x01, 0x47, 0x90, 0x71, 0x19, 0xb9, 0xa7, 0x7d, 0x8f, 0x04, 0xb5, 0xa0,
-	0x5a, 0x74, 0x05, 0xa7, 0x72, 0xd1, 0x21, 0x81, 0x8a, 0x4d, 0xe9, 0xd9, 0x21, 0x28, 0x0f, 0x49,
-	0xee, 0x49, 0xde, 0x94, 0x9d, 0xe4, 0x1e, 0xfa, 0x08, 0xfa, 0x98, 0xb8, 0x92, 0xcb, 0xa8, 0x1b,
-	0xb5, 0xe0, 0xde, 0x05, 0x83, 0xb0, 0x9b, 0x57, 0xb0, 0x15, 0xe3, 0xe4, 0xf4, 0x3d, 0xa4, 0x7a,
-	0x48, 0x6a, 0x9e, 0x42, 0xee, 0x7b, 0xec, 0x30, 0x7f, 0x80, 0x1d, 0x7f, 0x5d, 0x25, 0xe6, 0x8f,
-	0xb0, 0x15, 0x4b, 0xb2, 0x6e, 0x69, 0xab, 0x75, 0xcd, 0xaf, 0x50, 0x6a, 0x61, 0xbf, 0xed, 0xf8,
-	0x98, 0xfb, 0x3d, 0xcf, 0xa1, 0xfc, 0x8e, 0xac, 0x5d, 0x38, 0xaa, 0xc1, 0x06, 0x73, 0x3c, 0x17,
-	0x07, 0x94, 0xb1, 0x88, 0x73, 0xfc, 0x68, 0x0b, 0x24, 0x88, 0x50, 0x6e, 0xe6, 0x9f, 0x1a, 0x94,
-	0x17, 0xb0, 0xaf, 0xab, 0xd8, 0x82, 0x0c, 0x0f, 0x92, 0x04, 0x15, 0x14, 0x63, 0xbd, 0x1f, 0xe5,
-	0x8f, 0x9c, 0xa6, 0x47, 0xa4, 0x2f, 0x3b, 0xa2, 0x2e, 0x64, 0x45, 0x91, 0xff, 0x5f, 0x6b, 0x9a,
-	0xbf, 0x6b, 0x00, 0x61, 0xca, 0xf7, 0x75, 0xde, 0xaa, 0xed, 0x3e, 0x95, 0x9a, 0x5a, 0x26, 0xf5,
-	0x37, 0xc8, 0xb7, 0x44, 0xfe, 0xd3, 0x3b, 0x71, 0x3f, 0x42, 0xef, 0xb7, 0x90, 0x17, 0xef, 0xad,
-	0xaa, 0x6f, 0xe4, 0xdd, 0x86, 0x15, 0x16, 0xa7, 0x15, 0xca, 0x88, 0x33, 0xef, 0x96, 0xd8, 0x39,
-	0x0f, 0x4f, 0xa2, 0x1d, 0xb2, 0x20, 0xcd, 0xb0, 0xc3, 0x89, 0xaa, 0x32, 0x5f, 0xdf, 0x0d, 0x8b,
-	0x8a, 0x51, 0x5c, 0x3d, 0x52, 0x6c, 0x07, 0x6e, 0x26, 0x83, 0xed, 0x19, 0x76, 0x4e, 0xdf, 0x43,
-	0xbf, 0x5a, 0xff, 0x77, 0xa1, 0x78, 0x81, 0x7d, 0xa7, 0x87, 0xd9, 0x03, 0x66, 0x71, 0xd9, 0x5b,
-	0x82, 0xf7, 0x67, 0xec, 0x3b, 0xfd, 0xf1, 0x88, 0xfb, 0x7b, 0xda, 0x81, 0x7e, 0x68, 0xd4, 0xcb,
-	0x53, 0xda, 0x0e, 0x19, 0xe2, 0xe3, 0xe1, 0x90, 0x61, 0xce, 0x6d, 0xc3, 0xc3, 0x13, 0x91, 0xa5,
-	0x3d, 0xe2, 0xbe, 0x39, 0x81, 0xd2, 0x7c, 0x46, 0x29, 0x65, 0xdd, 0x94, 0xab, 0x49, 0xf9, 0xb2,
-	0x33, 0x73, 0x7c, 0xe2, 0x64, 0x51, 0x0e, 0x32, 0xc7, 0x8d, 0x46, 0xbf, 0x73, 0xd9, 0x68, 0x16,
-	0x12, 0x68, 0x1b, 0x0c, 0xbb, 0x79, 0x71, 0x79, 0xdd, 0x54, 0x06, 0x0d, 0xe5, 0x01, 0x3a, 0xcd,
-	0x66, 0xa3, 0xdf, 0xeb, 0xb6, 0xcf, 0xae, 0x0a, 0x49, 0xe1, 0xde, 0xb8, 0x0c, 0x76, 0x7a, 0xfd,
-	0x55, 0x07, 0xa3, 0xe1, 0x28, 0x25, 0xa3, 0x1b, 0x8c, 0xbe, 0x00, 0xbd, 0x85, 0x7d, 0x94, 0x8f,
-	0xae, 0x51, 0x7e, 0x6d, 0x2a, 0xdb, 0x33, 0x7b, 0x4e, 0x85, 0x5f, 0x2f, 0xee, 0xd7, 0x7b, 0xe3,
-	0x17, 0x7e, 0x6e, 0xbe, 0x81, 0x6c, 0x34, 0x81, 0x51, 0x29, 0x44, 0xe3, 0x1f, 0x82, 0x4a, 0x79,
-	0x81, 0x55, 0x45, 0x46, 0x03, 0x72, 0x1a, 0x19, 0x1f, 0xbc, 0xd3, 0xc8, 0xd9, 0x49, 0xda, 0x85,
-	0x9d, 0xb9, 0x81, 0x83, 0x3e, 0xc4, 0x14, 0xcc, 0x4d, 0xc2, 0xca, 0xc7, 0x25, 0x28, 0xa7, 0xa2,
-	0xcb, 0xd5, 0xab, 0x8c, 0x76, 0xe2, 0x8e, 0xaa, 0x7e, 0xf4, 0xd6, 0xc4, 0x29, 0xfa, 0x0e, 0x8c,
-	0xd8, 0x35, 0xa1, 0x4f, 0x16, 0xbc, 0x15, 0x22, 0x74, 0x77, 0xa1, 0x9d, 0x53, 0x74, 0x01, 0x85,
-	0xb7, 0xfd, 0x85, 0xf6, 0x43, 0xe7, 0x05, 0xbd, 0x5c, 0xf9, 0xf0, 0xdf, 0x20, 0xa7, 0x27, 0xa5,
-	0xe7, 0x7f, 0xaa, 0x89, 0xa7, 0x97, 0xaa, 0xf6, 0xfc, 0x52, 0xd5, 0xfe, 0x7e, 0xa9, 0x6a, 0x7f,
-	0xbc, 0x56, 0x13, 0x83, 0xb4, 0xfc, 0x6d, 0x39, 0xfa, 0x37, 0x00, 0x00, 0xff, 0xff, 0x03, 0xcd,
-	0x1c, 0xf8, 0x36, 0x09, 0x00, 0x00,
+	// 889 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xac, 0x56, 0x4f, 0x6f, 0x1a, 0x47,
+	0x14, 0xf7, 0x02, 0xc6, 0xe6, 0x81, 0x31, 0x1e, 0xe3, 0x86, 0x92, 0x98, 0xa6, 0xab, 0xaa, 0xb2,
+	0x5a, 0x95, 0x95, 0x1c, 0x59, 0x69, 0x2f, 0x95, 0x88, 0xbd, 0xa5, 0x56, 0x8c, 0x41, 0xb3, 0x6e,
+	0xa4, 0x9e, 0xb6, 0x03, 0x8c, 0x97, 0x95, 0x61, 0x67, 0xb2, 0xb3, 0x38, 0xf2, 0xa7, 0xe8, 0xb5,
+	0x97, 0x9e, 0xfa, 0x65, 0x72, 0xcc, 0x27, 0xa8, 0x5a, 0xe7, 0x8b, 0x44, 0x3b, 0x3b, 0xbb, 0x2c,
+	0x86, 0x60, 0x2b, 0xca, 0x69, 0xe7, 0xbd, 0x79, 0xbf, 0x37, 0xbf, 0xf7, 0x57, 0x0b, 0xbb, 0x43,
+	0x12, 0x10, 0xde, 0x37, 0xa2, 0x4f, 0x93, 0xfb, 0x2c, 0x60, 0x28, 0x1f, 0x49, 0xf5, 0x1f, 0x1c,
+	0x37, 0x18, 0x4d, 0xfb, 0xcd, 0x01, 0x9b, 0x18, 0x0e, 0x73, 0x98, 0x21, 0xaf, 0xfb, 0xd3, 0x4b,
+	0x29, 0x49, 0x41, 0x9e, 0x22, 0x58, 0xfd, 0x79, 0xca, 0x7c, 0x30, 0x62, 0x63, 0xea, 0x13, 0x3a,
+	0xba, 0x79, 0x6d, 0x10, 0x31, 0xbd, 0x22, 0x06, 0xef, 0x1b, 0x03, 0xe6, 0x5d, 0xba, 0x4e, 0xea,
+	0xa0, 0x80, 0x47, 0xf7, 0x01, 0xa9, 0xef, 0x33, 0x7f, 0xf6, 0x55, 0xb0, 0x9f, 0xee, 0x83, 0x89,
+	0x80, 0xf9, 0xc4, 0xa1, 0xe9, 0x53, 0x04, 0xd5, 0x8f, 0x20, 0xdf, 0xa6, 0x01, 0xa6, 0xaf, 0xd1,
+	0x97, 0xb0, 0xe9, 0xf8, 0x6c, 0xca, 0x6d, 0x77, 0x58, 0xd3, 0x9e, 0x6a, 0x07, 0x05, 0xbc, 0x21,
+	0xe5, 0xd3, 0x21, 0xaa, 0x40, 0xf6, 0x8a, 0xde, 0xd4, 0x32, 0x4f, 0xb5, 0x83, 0x12, 0x0e, 0x8f,
+	0xba, 0x09, 0x1b, 0x12, 0x26, 0x38, 0xaa, 0xc2, 0xfa, 0x35, 0x19, 0x4f, 0xa9, 0x04, 0x95, 0x70,
+	0x24, 0xa0, 0x6f, 0x60, 0x5d, 0x72, 0x94, 0xa0, 0xe2, 0x61, 0xb9, 0x19, 0x33, 0x36, 0xc3, 0x2f,
+	0x8e, 0x2e, 0xf5, 0x1e, 0xe4, 0xad, 0x7b, 0x5f, 0xff, 0x1e, 0x72, 0x9c, 0xb8, 0xb1, 0xa7, 0x9d,
+	0xe6, 0x2c, 0x84, 0x97, 0xaf, 0x7a, 0xc4, 0xf5, 0x5f, 0xe4, 0xde, 0xfe, 0xfb, 0xd5, 0x1a, 0x96,
+	0x46, 0xba, 0x01, 0x1b, 0x96, 0x22, 0x96, 0x50, 0xd0, 0x56, 0x51, 0x38, 0x80, 0xec, 0x19, 0x73,
+	0xd0, 0xd7, 0x90, 0xb9, 0xba, 0x56, 0x96, 0x8b, 0x4f, 0xe0, 0xcc, 0xd5, 0xb5, 0xfe, 0xa7, 0x06,
+	0xa5, 0x16, 0xe7, 0xd4, 0x1b, 0x9e, 0x31, 0x27, 0xe4, 0xfc, 0x2c, 0xe6, 0xec, 0x31, 0x85, 0x44,
+	0xcd, 0xa4, 0xa0, 0xc7, 0xf2, 0x70, 0xce, 0x14, 0xbb, 0x28, 0x9a, 0x73, 0x86, 0xca, 0x90, 0x11,
+	0x9e, 0x8c, 0x25, 0x87, 0x33, 0xc2, 0x43, 0xfb, 0x90, 0x1d, 0x33, 0xa7, 0x96, 0x95, 0xf8, 0x62,
+	0x53, 0xb5, 0x5f, 0xf8, 0x42, 0xa8, 0x47, 0x8f, 0xa1, 0x30, 0x60, 0x93, 0x89, 0x1b, 0xd8, 0xc2,
+	0xab, 0xe5, 0x24, 0x6a, 0x33, 0x52, 0x58, 0x9e, 0x6e, 0xc2, 0x56, 0x8a, 0x90, 0xe0, 0xca, 0x79,
+	0x36, 0x71, 0x9e, 0xa4, 0x60, 0xb8, 0x2a, 0x05, 0x2f, 0xa1, 0xda, 0xa6, 0xc1, 0x19, 0x09, 0xa8,
+	0x08, 0x2c, 0x8f, 0x70, 0x31, 0x62, 0xc1, 0xa7, 0xc6, 0xa7, 0xff, 0xa3, 0xc1, 0xde, 0x12, 0x6f,
+	0x82, 0x7f, 0x5a, 0xba, 0x0c, 0xd8, 0x14, 0xca, 0x89, 0x6a, 0x80, 0xdd, 0x54, 0x75, 0x12, 0xff,
+	0x89, 0xd1, 0x03, 0x43, 0xee, 0x41, 0x21, 0x24, 0xf9, 0xf9, 0xea, 0xa8, 0xff, 0xad, 0x01, 0xc4,
+	0x2e, 0x05, 0x47, 0xfb, 0x00, 0xdc, 0xa7, 0x9c, 0xf8, 0x34, 0x2c, 0x9c, 0x26, 0xcd, 0x0a, 0x4a,
+	0x63, 0x79, 0xf3, 0x65, 0xcd, 0xcc, 0x97, 0x75, 0xa1, 0x8a, 0xaa, 0x45, 0x72, 0x1f, 0x69, 0x91,
+	0x24, 0xe2, 0xf5, 0x55, 0x11, 0x4f, 0xa1, 0xdc, 0x0e, 0xa9, 0x1f, 0x8f, 0x88, 0xe7, 0xd0, 0x30,
+	0xec, 0x43, 0x00, 0x35, 0x72, 0xde, 0x65, 0x1c, 0xf8, 0xee, 0x2c, 0x70, 0x69, 0x7d, 0xea, 0x5d,
+	0x32, 0x5c, 0x70, 0xe2, 0x23, 0x32, 0x20, 0xef, 0x53, 0x22, 0x58, 0x44, 0xba, 0x7c, 0xf8, 0x28,
+	0x66, 0x93, 0xf2, 0x7d, 0x71, 0xc3, 0x29, 0x56, 0x66, 0xfa, 0x73, 0xd8, 0x9e, 0x7b, 0x36, 0x3d,
+	0x97, 0x2b, 0x57, 0x83, 0x05, 0xbb, 0x1d, 0x1a, 0x10, 0x8b, 0xfa, 0xd7, 0xd4, 0x9f, 0x91, 0xae,
+	0xc1, 0x06, 0xf7, 0xdd, 0x09, 0xf1, 0x6f, 0xe2, 0x35, 0xa1, 0x44, 0xa4, 0xc3, 0x96, 0x47, 0xdf,
+	0xd8, 0x13, 0x1a, 0x10, 0x7b, 0xec, 0x8a, 0xb0, 0x5d, 0xb2, 0x07, 0x05, 0x5c, 0xf4, 0xe8, 0x9b,
+	0xd0, 0xd1, 0x99, 0x2b, 0x02, 0xfd, 0x0f, 0xa8, 0x2e, 0x3a, 0x15, 0x7c, 0x11, 0xab, 0x2d, 0x60,
+	0x1f, 0x4c, 0xbb, 0x84, 0xe9, 0x80, 0x79, 0x03, 0x77, 0x4c, 0x3f, 0x5b, 0x6f, 0x1d, 0xc1, 0x56,
+	0xca, 0xe9, 0x43, 0x53, 0xf8, 0x5d, 0x30, 0x97, 0xfb, 0xb0, 0x2c, 0x68, 0x1b, 0x8a, 0xc7, 0xbf,
+	0xb6, 0xce, 0xdb, 0xa6, 0x7d, 0xde, 0x3d, 0x31, 0x2b, 0x6b, 0xa8, 0x02, 0xa5, 0x63, 0x6c, 0xb6,
+	0x2e, 0x4c, 0xbb, 0x8d, 0xbb, 0xbf, 0xf5, 0x2a, 0x5a, 0xa8, 0x69, 0x9d, 0x9c, 0xd8, 0x17, 0x5d,
+	0xa5, 0xc9, 0xa0, 0x3d, 0xd8, 0xc1, 0x66, 0xa7, 0xfb, 0xca, 0xb4, 0x7f, 0xc1, 0xdd, 0x8e, 0x52,
+	0x67, 0x43, 0xb5, 0xf2, 0x75, 0xd1, 0xb5, 0x7b, 0xf8, 0xb4, 0xd3, 0xc2, 0xbf, 0x57, 0x72, 0x87,
+	0xef, 0xb3, 0x50, 0x3c, 0x21, 0x51, 0x92, 0xdd, 0x01, 0x45, 0xdf, 0x42, 0xb6, 0x4d, 0x03, 0x54,
+	0x4e, 0x3a, 0x45, 0x2e, 0xfc, 0xfa, 0xf6, 0x9c, 0x2c, 0x78, 0x68, 0x67, 0xa5, 0xed, 0xac, 0x3b,
+	0x76, 0xf1, 0x5a, 0xff, 0x11, 0x0a, 0xc9, 0xd2, 0x43, 0xd5, 0xf8, 0x36, 0xbd, 0x98, 0xeb, 0x7b,
+	0x4b, 0xb4, 0x82, 0xa3, 0x1e, 0xec, 0x2c, 0x6c, 0x26, 0xf4, 0x24, 0xc5, 0x63, 0x61, 0x05, 0xd6,
+	0xf7, 0x57, 0xdc, 0x0a, 0x1e, 0x8e, 0x43, 0x34, 0xf3, 0x68, 0x27, 0x6d, 0x18, 0xb1, 0x40, 0x77,
+	0x55, 0x82, 0xa3, 0x9f, 0xa1, 0x98, 0x2a, 0x09, 0xfa, 0x62, 0xc9, 0xf8, 0x84, 0xd0, 0x47, 0x4b,
+	0xf5, 0x82, 0xa3, 0x0e, 0x54, 0xee, 0x36, 0x30, 0x7a, 0x1c, 0x1b, 0x2f, 0x99, 0x97, 0xfa, 0x93,
+	0x8f, 0x5f, 0x46, 0xb9, 0x4c, 0x1a, 0x6b, 0x96, 0xcb, 0x74, 0x03, 0xcf, 0x72, 0x39, 0xd7, 0x81,
+	0x2f, 0xaa, 0xef, 0xfe, 0x6f, 0xac, 0xbd, 0xbd, 0x6d, 0x68, 0xef, 0x6e, 0x1b, 0xda, 0x7f, 0xb7,
+	0x0d, 0xed, 0xaf, 0xf7, 0x8d, 0xb5, 0x7e, 0x5e, 0xfe, 0x54, 0x3c, 0xfb, 0x10, 0x00, 0x00, 0xff,
+	0xff, 0xc2, 0x11, 0xaa, 0x8e, 0x4d, 0x09, 0x00, 0x00,
 }

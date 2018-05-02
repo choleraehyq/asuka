@@ -2,8 +2,8 @@ syntax = "proto3";
 
 package errorpb;
 
-import "gogoproto/gogo.proto";
-import "configpb/configpb.proto";
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "github.com/choleraehyq/asuka/pb/configpb/configpb.proto";
 
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.sizer_all) = true;
@@ -11,40 +11,41 @@ option (gogoproto.unmarshaler_all) = true;
 option (gogoproto.goproto_enum_prefix_all) = false;
 
 message NotLeader {
-    configpb.ConfigNo group_no = 1 [(gogoproto.nullable) = false];
-    configpb.NodeAddress leader = 2 [(gogoproto.nullable) = false];
+    string leader = 1;
 }
 
 message NodeNotFound {
-    configpb.NodeAddress node = 1 [(gogoproto.nullable) = false];
-}
-
-message KeyNotInRange {
-    bytes key = 1;
-    configpb.KeyRange range = 2 [(gogoproto.nullable) = false];
+    string node = 1;
 }
 
 message KeyNotFound {
     bytes key = 1;
 }
 
-message StaleEpoch {
-    configpb.ConfigNo current_no = 1 [(gogoproto.nullable) = false];
+message GroupNotFound {
+    string groups = 1;
 }
 
-message Other {}
+message StaleEpoch {
+    configpb.ConfigNo current_term = 1 [(gogoproto.nullable) = false];
+}
 
-message OK {}
+message SnTooHigh {
+    uint64 current_sn = 1;
+}
+
+message Other {
+    string message = 1;
+}
 
 message Error {
-    string message  = 1;
     oneof error_type {
-        OK ok = 2;
-        NotLeader not_leader = 3;
-        NodeNotFound node = 4;
-        KeyNotInRange key_range = 5;
-        KeyNotFound key_not_found = 6;
-        StaleEpoch stale_epoch = 7;
-        Other other = 8;
+        NotLeader not_leader = 1;
+        NodeNotFound node = 2;
+        KeyNotFound key_not_found = 3;
+        StaleEpoch stale_epoch = 4;
+        GroupNotFound group_not_found = 5;
+        SnTooHigh sn_too_high = 6;
+        Other other = 100;
     }
 }

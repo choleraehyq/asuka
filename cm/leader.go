@@ -7,13 +7,14 @@ import (
 	"github.com/coreos/etcd/clientv3"
 	log "github.com/sirupsen/logrus"
 
-	"github.com/coreos/etcd/clientv3/concurrency"
+	"github.com/juju/errors"
 )
 
-var (
-	leaderLeaseTTL           int64 = 1
-	cmEtcdPathPrefix               = "/asuka/cm/"
-	leaderElectionPathPrefix       = "/asuka/cm/election"
+const (
+	leaderLeaseTTL     time.Duration = 6
+	asukaPathPrefix = "/asuka/"
+	cmEtcdPathPrefix         = asukaPathPrefix + "cm/"
+	leaderElectionPath       = cmEtcdPathPrefix + "election"
 )
 
 func (s *Server) startLeaderLoop() {
@@ -30,23 +31,13 @@ func (s *Server) stopLeaderLoop() {
 func (s *Server) leaderLoop() {
 	defer s.leaderLoopWg.Done()
 
-	lease, err := s.client.Grant(s.leaderLoopCtx, leaderLeaseTTL)
-	if err != nil {
-		log.Fatalf("grant leader lease failed: %v\n", err)
-	}
+	lease, err := s.client.Grant(s.leaderLoopCtx, int64(leaderLeaseTTL))
+	s.client.KeepAliveOnce(s.leaderLoopCtx, lease.ID)
 
 	_, err = s.client.Put(s.leaderLoopCtx, cmEtcdPathPrefix+s.cfg.RpcAddr, "", clientv3.WithLease(lease.ID))
 	if err != nil {
 		log.Fatalf("register self rpc address failed: %v\n", err)
 	}
-
-	session, err := concurrency.NewSession(s.client, concurrency.WithTTL(int(leaderLeaseTTL)))
-	if err != nil {
-		panic(err)
-	}
-	defer session.Close()
-
-	s.election = concurrency.NewElection(session, leaderElectionPathPrefix)
 
 	for {
 		if s.isClosed() {
@@ -56,25 +47,26 @@ func (s *Server) leaderLoop() {
 
 		s.client.KeepAliveOnce(s.leaderLoopCtx, lease.ID)
 
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(leaderLeaseTTL / 2 * time.Second)
 
+		if err := s.compaignLeader(lease.ID); err != nil {
+			log.Debugf("campaign leader failed: %v\n", err)
+		}
 		leader, err := s.getLeader()
 		if err != nil {
-			log.Errorf("getLeader failed: %v\n", err)
+			log.Errorf("get leader failed: %v", err)
+			continue
 		}
-		if len(leader) == 0 {
-			if err := s.election.Campaign(s.leaderLoopCtx, s.leaderValue); err != nil {
-				log.Errorf("campaign leader failed: %v\n", err)
-			}
-		} else {
-			log.Printf("leader is %s now\n", leader)
-			if leader == s.leaderValue {
-				if err := s.election.Proclaim(context.Background(), s.leaderValue); err != nil {
-					log.Errorf("proclaim self leader failed: %v\n", err)
-				}
-			}
-		}
+		log.Debugf("leader is %s now\n", leader)
 	}
+}
+
+func (s *Server) compaignLeader(lease clientv3.LeaseID) error {
+	txn := s.txn().If(clientv3.Compare(clientv3.Version(leaderElectionPath), "=", 0)).Then(clientv3.OpPut(leaderElectionPath, s.leaderValue, clientv3.WithLease(lease)))
+	if _, err := txn.Commit(); err != nil {
+		return errors.Trace(err)
+	}
+	return nil
 }
 
 func (s *Server) IsLeader() bool {
@@ -83,12 +75,21 @@ func (s *Server) IsLeader() bool {
 }
 
 func (s *Server) getLeader() (string, error) {
-	g, err := s.election.Leader(s.leaderLoopCtx)
-	if err == concurrency.ErrElectionNoLeader {
-		return "", nil
-	} else if err != nil {
-		return "", err
-	} else {
-		return string(g.Kvs[0].Value), nil
+	resp, err := s.client.Get(s.leaderLoopCtx, leaderElectionPath)
+	if err != nil {
+		return "", errors.Trace(err)
 	}
+	return string(resp.Kvs[0].Value), nil
+}
+
+func (s *Server) leaderCmp() clientv3.Cmp {
+	return clientv3.Compare(clientv3.Value(leaderElectionPath), "=", s.leaderValue)
+}
+
+func (s *Server) txn() clientv3.Txn {
+	return s.client.Txn(s.client.Ctx())
+}
+
+func (s *Server) leaderTxn(cs ...clientv3.Cmp) clientv3.Txn {
+	return s.txn().If(append(cs, s.leaderCmp())...)
 }
