@@ -153,7 +153,7 @@ func (s *Server) AppendLog(ctx context.Context, req *datapb.AppendLogReq) (*data
 	}
 	// commit to align primary
 	if req.CommitSn > instance.commitSn {
-		for i := instance.commitSn; i <= req.CommitSn; i++ {
+		for i := instance.commitSn+1; i <= req.CommitSn; i++ {
 			if err := instance.commitLogWithoutLock(i); err != nil {
 				log.Errorf("commit log %d failed: %v", i, err)
 				return nil, errors.Trace(err)
@@ -163,7 +163,7 @@ func (s *Server) AppendLog(ctx context.Context, req *datapb.AppendLogReq) (*data
 	if err := instance.appendLogWithoutLock(req.Sn, req.Log); err != nil {
 		return &datapb.AppendLogResp{}, errors.Trace(err)
 	}
-	log.Debugf("append log %s successfully, key %s, value %s", req.Sn, string(req.Log.Kv.Key), string(req.Log.Kv.Value))
+	log.Debugf("append log %d successfully, key %s, value %s", req.Sn, string(req.Log.Kv.Key), string(req.Log.Kv.Value))
 	return &datapb.AppendLogResp{
 		Sn: instance.preparedSn+1,
 	}, nil
