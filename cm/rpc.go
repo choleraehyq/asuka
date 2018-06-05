@@ -185,8 +185,7 @@ func (s *Server) selectLowLoadedNodesExceptGroups(n int, excepts []*configpb.Gro
 
 	nodes := mergeGroups(groups)
 	if len(nodes) + len(freeNodes) < n {
-		log.Errorf("No enough nodes!")
-		return nil, errors.New("No enough nodes!")
+		log.Warnf("No enough nodes! expect %d nodes, get %d nodes", n, len(nodes)+len(freeNodes))
 	}
 	chosen := lowestNodesFromMap(nodes, n - len(freeNodes))
 	log.Debugf("choose from non-free nodes: %v", chosen)
@@ -304,7 +303,10 @@ func removeNodeAndAddLearner(info *configpb.GroupInfo, addr string, learner stri
 	} else {
 		return nil, errors.New(fmt.Sprintf("No such node %s in this group %s", addr, info.GroupInfo.GroupId))
 	}
-	ret.Learners = append(ret.Learners, learner)
+	// learner == "" means no new learner
+	if len(learner) != 0 {
+		ret.Learners = append(ret.Learners, learner)
+	}
 	return ret, nil
 }
 
@@ -315,19 +317,29 @@ func (s *Server) removeNode(addr string) error {
 	}
 	infos = filterGroupByNode(addr, infos)
 	for _, info := range infos {
+		// Just pick one node to replace down node, so len(nodes) should always be 1
 		nodes, err := s.selectLowLoadedNodesExceptGroups(1, infos)
 		if err != nil {
 			log.Errorf("select 1 low loaded node to replace down node %s failed: %v", addr, err)
 			return errors.Trace(err)
 		}
-		newGroupInfo, err := removeNodeAndAddLearner(info, addr, nodes[0])
-		if err := s.kv.SaveGroup(newGroupInfo.GroupInfo.GroupId, newGroupInfo); err != nil {
+		var newGroupInfo *configpb.GroupInfo
+		if len(nodes) == 0 {
+			// No other available node
+			// learner "" means no new learner
+			nodes = append(nodes, "")
+		}
+		// len(nodes) should always be 1, so nodes[0] must be a learner
+		newGroupInfo, err = removeNodeAndAddLearner(info, addr, nodes[0])
+		if err != nil {
+			log.Errorf("remove down node and add learner failed: %v", err)
 			return errors.Trace(err)
 		}
 		if err := s.kv.SaveGroup(newGroupInfo.GroupInfo.GroupId, newGroupInfo); err != nil {
 			log.Errorf("persistent new group info failed: %v", err)
 			return errors.Trace(err)
 		}
+		// persistent new group into etcd first and notify data nodes later
 		if err := notifyNodesGroupChange(info, newGroupInfo); err != nil {
 			return errors.Trace(err)
 		}
@@ -373,14 +385,26 @@ func upgradeLearner(addr string, info *configpb.GroupInfo) bool {
 func notifyNodesGroupChange(oldInfo *configpb.GroupInfo, info *configpb.GroupInfo) error {
 	req := &datapb.GroupChangeReq{
 		GroupInfo: info,
-		Reason: datapb.CHANGE_TO_PRIMARY,
 	}
+
+	// Send to new learners to let them create instance first.
+	for _, addr := range info.Learners {
+		client := datapb.NewDataServiceProtobufClient(addr, &http.Client{})
+		if !inStringSlice(addr, oldInfo.Learners) {
+			req.Reason = datapb.ADD_TO_GROUP
+			if _, err := client.GroupChange(context.Background(), req); err != nil {
+				log.Errorf("send group change to learner %s failed: %v", addr, err)
+				return errors.Trace(err)
+			}
+		}
+	}
+
 	client := datapb.NewDataServiceProtobufClient(info.Primary, &http.Client{})
+	req.Reason = datapb.CHANGE_TO_PRIMARY
 	if _, err := client.GroupChange(context.Background(), req); err != nil {
 		log.Errorf("Send group change to primary %s failed: %v", info.Primary, err)
 		return errors.Trace(err)
 	}
-
 
 	for _, addr := range info.Secondaries {
 		client := datapb.NewDataServiceProtobufClient(addr, &http.Client{})
@@ -391,16 +415,15 @@ func notifyNodesGroupChange(oldInfo *configpb.GroupInfo, info *configpb.GroupInf
 		}
 	}
 
+	// Only send to old learners
 	for _, addr := range info.Learners {
 		client := datapb.NewDataServiceProtobufClient(addr, &http.Client{})
 		if inStringSlice(addr, oldInfo.Learners) {
 			req.Reason = datapb.CHANGE_NODE
-		} else {
-			req.Reason = datapb.ADD_TO_GROUP
-		}
-		if _, err := client.GroupChange(context.Background(), req); err != nil {
-			log.Errorf("send group change to learner %s failed: %v", addr, err)
-			return errors.Trace(err)
+			if _, err := client.GroupChange(context.Background(), req); err != nil {
+				log.Errorf("send group change to learner %s failed: %v", addr, err)
+				return errors.Trace(err)
+			}
 		}
 	}
 	return nil
@@ -414,7 +437,7 @@ func (s *Server) UpgradeLearner(ctx context.Context, req *metapb.UpgradeLearnerR
 	}
 	oldInfo := *info
 	// TODO(cholerae): check term
-	if upgradeLearner(req.Addr, info) {
+	if !upgradeLearner(req.Addr, info) {
 		return nil, errors.New(fmt.Sprintf("node %s is not a learner of group %s", req.Addr, groupID))
 	}
 	if err := s.kv.SaveGroup(groupID, info); err != nil {

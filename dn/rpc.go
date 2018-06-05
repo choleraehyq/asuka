@@ -209,13 +209,16 @@ func (s *Server) syncLog(selfAddr string, ins *instance) {
 			},
 			Sn: ins.preparedSn+1,
 		}
+		// TODO(cholerae): ins.primary may be removed from this group during syncing, handle that
 		client := datapb.NewDataServiceProtobufClient(ins.primary, &http.Client{})
 		ins.RUnlock()
 		resp, err := client.GetLog(context.Background(), req)
 		// sync done
 		if resp.PrepareSn < req.Sn {
+			log.Debugf("get log to %d all done", resp.PrepareSn)
 			break
 		}
+		log.Debugf("get log %d done", req.Sn)
 		if err != nil {
 			log.Errorf("cannot get log %d from primary node %s: %v", req.Sn, ins.primary, err)
 		}
@@ -272,12 +275,10 @@ func (s *Server) GroupChange(ctx context.Context, req *datapb.GroupChangeReq) (*
 		assert(ins.status != LEARNER)
 		log.Debugf("create group %s successfully", req.GroupInfo.GroupInfo.GroupId)
 	case datapb.ADD_TO_GROUP:
-		ins, err := s.createInstance(req.GroupInfo.GroupInfo.GroupId, req.GroupInfo)
+		_, err := s.createInstance(req.GroupInfo.GroupInfo.GroupId, req.GroupInfo)
 		if err != nil {
 			return nil, errors.Trace(err)
 		}
-		// TODO(cholerae): handle error
-		go s.syncLog(s.cfg.RpcAddr, ins)
 	case datapb.REMOVE_FROM_GROUP:
 		panic("not implemented")
 	case datapb.CHANGE_TO_PRIMARY:
@@ -291,6 +292,7 @@ func (s *Server) GroupChange(ctx context.Context, req *datapb.GroupChangeReq) (*
 		for i := ins.commitSn+1; i <= ins.preparedSn; i++ {
 			ins.commitLogWithoutLock(i)
 		}
+		log.Debugf("start reconcile to log %d", ins.preparedSn)
 		// reconcile all followers with its own commit sn to truncate their logs
 		for _, addr := range append(ins.secondaries, ins.learners...) {
 			client := datapb.NewDataServiceProtobufClient(addr, &http.Client{})
@@ -305,6 +307,7 @@ func (s *Server) GroupChange(ctx context.Context, req *datapb.GroupChangeReq) (*
 				log.Errorf("reconcile node %s failed: %v", addr, err)
 				return nil, errors.Trace(err)
 			}
+			log.Debugf("node %s reconcile to log %d done", addr, ins.preparedSn)
 		}
 	}
 	return &datapb.GroupChangeResp{}, nil
@@ -323,6 +326,7 @@ func (s *Server) MetaServerChange(ctx context.Context, req *datapb.MetaServerCha
 func (s *Server) Reconcile(ctx context.Context, req *datapb.ReconcileReq) (*datapb.ReconcileResp, error) {
 	instance := s.getGroupInstance(req.GroupNo.GroupId)
 	if instance == nil {
+		// even new learners have already created instance.
 		log.Errorf("groups %s not found", req.GroupNo.GroupId)
 		return nil, errors.New(fmt.Sprintf("group %s not found", req.GroupNo.GroupId))
 	}
@@ -345,7 +349,6 @@ func (s *Server) Reconcile(ctx context.Context, req *datapb.ReconcileReq) (*data
 		instance.RUnlock()
 	}
 	instance.Lock()
-	defer instance.Unlock()
 	instance.term = req.GroupNo.Term
 	// in most cases, LEARNER's preparedSn should smaller than req.Sn, and they will sync this in their own syncLog
 	// but in some edge cases, LEARNER may have synced log higher than req.Sn from some secondaries
@@ -357,10 +360,15 @@ func (s *Server) Reconcile(ctx context.Context, req *datapb.ReconcileReq) (*data
 		for i := instance.commitSn; i < req.Sn; i++ {
 			if err := instance.commitLogWithoutLock(i); err != nil {
 				log.Errorf("commit log %d failed: %v", err)
+				instance.Unlock()
 				return nil, errors.Trace(err)
 			}
 		}
 		instance.commitSn = req.Sn
+		instance.Unlock()
+	} else {
+		instance.Unlock()
+		go s.syncLog(s.cfg.RpcAddr, instance)
 	}
 	return &datapb.ReconcileResp{}, nil
 }

@@ -141,7 +141,7 @@ func (s *Server) createInstance(groupID string, info *configpb.GroupInfo) (*inst
 	s.rw.Lock()
 	defer s.rw.Unlock()
 	dir := s.cfg.DataDir
-	dbpath := path.Join(dir, groupID)
+	dbpath := path.Join(dir, s.cfg.RpcAddr + groupID)
 	if err := os.MkdirAll(dbpath, 0777); err != nil {
 		return nil, errors.Annotatef(err, "create dbpath %s failed", dbpath)
 	}
@@ -154,6 +154,9 @@ func (s *Server) createInstance(groupID string, info *configpb.GroupInfo) (*inst
 		path: dbpath,
 	}
 	ins.initFromGroupInfo(info, s.cfg.RpcAddr)
+	// if creating new group, the term of new instance should be 0
+	// if reconciling, the term will be set in reconciling
+	ins.term = 0
 	s.instances[groupID] = ins
 	return ins, nil
 }
