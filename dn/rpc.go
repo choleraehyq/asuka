@@ -2,18 +2,19 @@
 package dn
 
 import (
-	log "github.com/sirupsen/logrus"
-	"github.com/juju/errors"
-	"github.com/choleraehyq/asuka/pb/datapb"
+	"context"
+	"fmt"
 	"net/http"
 	"sync/atomic"
 	"time"
-	"context"
-	"fmt"
-	"github.com/choleraehyq/asuka/pb/errorpb"
+
 	"github.com/choleraehyq/asuka/pb/configpb"
-	"github.com/choleraehyq/asuka/pb/storagepb"
+	"github.com/choleraehyq/asuka/pb/datapb"
+	"github.com/choleraehyq/asuka/pb/errorpb"
 	"github.com/choleraehyq/asuka/pb/metapb"
+	"github.com/choleraehyq/asuka/pb/storagepb"
+	"github.com/juju/errors"
+	log "github.com/sirupsen/logrus"
 )
 
 func (s *Server) startRPC() {
@@ -92,7 +93,7 @@ func (s *Server) Set(ctx context.Context, req *datapb.SetReq) (*datapb.SetResp, 
 	}
 
 	// Append local prepare list
-	if err := instance.appendLogWithoutLock(instance.preparedSn+1, &datapb.Log{Kv: &req.Pair,}); err != nil {
+	if err := instance.appendLogWithoutLock(instance.preparedSn+1, &datapb.Log{Kv: &req.Pair}); err != nil {
 		return nil, errors.Trace(err)
 	}
 
@@ -100,12 +101,12 @@ func (s *Server) Set(ctx context.Context, req *datapb.SetReq) (*datapb.SetResp, 
 	logReq := &datapb.AppendLogReq{
 		GroupNo: configpb.ConfigNo{
 			GroupId: instance.groupId,
-			Term: instance.term,
+			Term:    instance.term,
 		},
 		Sn: instance.preparedSn,
 		Log: &datapb.Log{
 			Kv: &storagepb.KVPair{
-				Key: req.Pair.Key,
+				Key:   req.Pair.Key,
 				Value: req.Pair.Value,
 			},
 		},
@@ -153,7 +154,7 @@ func (s *Server) AppendLog(ctx context.Context, req *datapb.AppendLogReq) (*data
 	}
 	// commit to align primary
 	if req.CommitSn > instance.commitSn {
-		for i := instance.commitSn+1; i <= req.CommitSn; i++ {
+		for i := instance.commitSn + 1; i <= req.CommitSn; i++ {
 			if err := instance.commitLogWithoutLock(i); err != nil {
 				log.Errorf("commit log %d failed: %v", i, err)
 				return nil, errors.Trace(err)
@@ -165,7 +166,7 @@ func (s *Server) AppendLog(ctx context.Context, req *datapb.AppendLogReq) (*data
 	}
 	log.Debugf("append log %d successfully, key %s, value %s", req.Sn, string(req.Log.Kv.Key), string(req.Log.Kv.Value))
 	return &datapb.AppendLogResp{
-		Sn: instance.preparedSn+1,
+		Sn: instance.preparedSn + 1,
 	}, nil
 }
 
@@ -189,9 +190,9 @@ func (s *Server) GetLog(ctx context.Context, req *datapb.GetLogReq) (*datapb.Get
 	}
 	return &datapb.GetLogResp{
 		PrepareSn: instance.preparedSn,
-		CommitSn: instance.commitSn,
-		Sn: req.Sn,
-		Log: l,
+		CommitSn:  instance.commitSn,
+		Sn:        req.Sn,
+		Log:       l,
 	}, nil
 }
 
@@ -205,9 +206,9 @@ func (s *Server) syncLog(selfAddr string, ins *instance) {
 		req := &datapb.GetLogReq{
 			GroupNo: configpb.ConfigNo{
 				GroupId: ins.groupId,
-				Term: ins.term,
+				Term:    ins.term,
 			},
-			Sn: ins.preparedSn+1,
+			Sn: ins.preparedSn + 1,
 		}
 		// TODO(cholerae): ins.primary may be removed from this group during syncing, handle that
 		client := datapb.NewDataServiceProtobufClient(ins.primary, &http.Client{})
@@ -238,7 +239,7 @@ func (s *Server) syncLog(selfAddr string, ins *instance) {
 		Addr: addr,
 		ConfigNo: &configpb.ConfigNo{
 			GroupId: ins.groupId,
-			Term: ins.term,
+			Term:    ins.term,
 		},
 	}
 	ins.RUnlock()
@@ -289,7 +290,7 @@ func (s *Server) GroupChange(ctx context.Context, req *datapb.GroupChangeReq) (*
 		}
 		ins.initFromGroupInfo(req.GroupInfo, s.cfg.RpcAddr)
 		// commit all uncommitted log
-		for i := ins.commitSn+1; i <= ins.preparedSn; i++ {
+		for i := ins.commitSn + 1; i <= ins.preparedSn; i++ {
 			ins.commitLogWithoutLock(i)
 		}
 		log.Debugf("start reconcile to log %d", ins.preparedSn)
@@ -299,7 +300,7 @@ func (s *Server) GroupChange(ctx context.Context, req *datapb.GroupChangeReq) (*
 			reconcileReq := &datapb.ReconcileReq{
 				GroupNo: configpb.ConfigNo{
 					GroupId: ins.groupId,
-					Term: ins.term,
+					Term:    ins.term,
 				},
 				Sn: ins.commitSn,
 			}
@@ -318,6 +319,7 @@ func (s *Server) MetaServerChange(ctx context.Context, req *datapb.MetaServerCha
 	defer s.rw.Unlock()
 	s.metas = req.NewMetaList
 	s.primary_meta = req.Primary
+	log.Debugf("ConfigManager change: primary %s, metas %v", s.primary_meta, s.metas)
 	return &datapb.MetaServerChangeResp{
 		NewMetaList: s.metas,
 	}, nil

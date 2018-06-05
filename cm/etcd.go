@@ -5,10 +5,10 @@ import (
 	"path"
 	"time"
 
+	"github.com/choleraehyq/asuka/pb/configpb"
 	"github.com/coreos/etcd/clientv3"
 	"github.com/juju/errors"
 	log "github.com/sirupsen/logrus"
-	"github.com/choleraehyq/asuka/pb/configpb"
 )
 
 const (
@@ -22,14 +22,14 @@ var (
 )
 
 type etcdKVBase struct {
-	server   *Server
-	client   *clientv3.Client
+	server *Server
+	client *clientv3.Client
 }
 
 func newEtcdKVBase(s *Server) *etcdKVBase {
 	return &etcdKVBase{
-		server:   s,
-		client:   s.client,
+		server: s,
+		client: s.client,
 	}
 }
 
@@ -114,15 +114,23 @@ func (kv *etcdKVBase) SaveFreeNode(addr string) error {
 	return nil
 }
 
-func (kv *etcdKVBase) DeleteFreeNode(addr string) error {
-	key := path.Join(freeNodePathPrefix, addr)
+func (kv *etcdKVBase) Delete(key string) error {
 	resp, err := kv.server.leaderTxn().Then(clientv3.OpDelete(key)).Commit()
 	if err != nil {
-		log.Errorf("delete free node %s from etcd failed: %v", addr, err)
+		log.Errorf("delete key %s from etcd failed: %v", key, err)
 		return errors.Trace(err)
 	}
 	if !resp.Succeeded {
 		return errors.Trace(errTxnFailed)
+	}
+	return nil
+}
+
+func (kv *etcdKVBase) DeleteFreeNode(addr string) error {
+	key := path.Join(freeNodePathPrefix, addr)
+	if err := kv.Delete(key); err != nil {
+		log.Errorf("delete free node %s from etcd failed: %v", addr, err)
+		return errors.Trace(err)
 	}
 	return nil
 }
@@ -173,6 +181,19 @@ func (kv *etcdKVBase) LoadGroupInfos() ([]*configpb.GroupInfo, error) {
 			return nil, errors.Trace(err)
 		}
 		ret = append(ret, p)
+	}
+	return ret, nil
+}
+
+func (kv *etcdKVBase) LoadWithPrefix(prefix string) ([]string, error) {
+	resp, err := kvGet(kv.server.client, prefix, clientv3.WithPrefix())
+	if err != nil {
+		log.Errorf("load with prefix %s failed: %v", prefix, err)
+		return nil, errors.Trace(err)
+	}
+	var ret []string
+	for _, kv := range resp.Kvs {
+		ret = append(ret, string(kv.Value))
 	}
 	return ret, nil
 }

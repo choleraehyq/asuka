@@ -1,14 +1,15 @@
 package main
 
 import (
-	log "github.com/sirupsen/logrus"
-	"github.com/choleraehyq/asuka/dn"
+	"flag"
 	"os"
 	"os/signal"
-	"flag"
-	"syscall"
 	"path"
+	"syscall"
+
+	"github.com/choleraehyq/asuka/dn"
 	"github.com/choleraehyq/asuka/utils"
+	log "github.com/sirupsen/logrus"
 )
 
 var (
@@ -16,7 +17,7 @@ var (
 	logFile     = flag.String("log-file", "", "The external log file. Default log to console.")
 	logLevel    = flag.String("log-level", "debug", "The log level")
 	storagePath = flag.String("path", "./asuka.db", "storage file directory path")
-	primaryCM   = flag.String("cm", "127.0.0.1:9876", "config manager listening port")
+	primaryCM   = flag.String("cm", "http://127.0.0.1:9876", "config manager listening port")
 )
 
 func main() {
@@ -74,6 +75,6 @@ func parseCfg() *dn.Cfg {
 	return &dn.Cfg{
 		RpcAddr: *addrRPC,
 		DataDir: path.Join(*storagePath, *addrRPC),
-		CMAddr:  "http://" + *primaryCM,
+		CMAddr:  *primaryCM,
 	}
 }

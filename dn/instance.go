@@ -1,13 +1,14 @@
 package dn
 
 import (
-	"github.com/choleraehyq/asuka/storage"
+	"encoding/binary"
+	"fmt"
 	"sync"
+
 	"github.com/choleraehyq/asuka/pb/configpb"
 	"github.com/choleraehyq/asuka/pb/datapb"
+	"github.com/choleraehyq/asuka/storage"
 	"github.com/juju/errors"
-	"fmt"
-	"encoding/binary"
 )
 
 type instanceStatus int64
@@ -20,7 +21,7 @@ const (
 
 type instance struct {
 	engine storage.Engine
-	path string
+	path   string
 
 	// prepared list
 	preparedSn uint64
@@ -28,7 +29,7 @@ type instance struct {
 	commitSn uint64
 
 	groupId string
-	term uint64
+	term    uint64
 
 	status instanceStatus
 	// primary address

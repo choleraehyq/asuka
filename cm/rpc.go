@@ -9,12 +9,13 @@ import (
 
 	"sync/atomic"
 
-	"github.com/choleraehyq/asuka/pb/metapb"
-	"github.com/choleraehyq/asuka/pb/configpb"
 	"fmt"
-	"github.com/juju/errors"
-	"github.com/choleraehyq/asuka/pb/datapb"
 	"sort"
+
+	"github.com/choleraehyq/asuka/pb/configpb"
+	"github.com/choleraehyq/asuka/pb/datapb"
+	"github.com/choleraehyq/asuka/pb/metapb"
+	"github.com/juju/errors"
 )
 
 const (
@@ -65,8 +66,8 @@ func (s *Server) sendCreateGroup(addrs []string, info *configpb.GroupInfo) error
 	for _, addr := range addrs {
 		client := datapb.NewDataServiceProtobufClient(addr, &http.Client{})
 		groupReq := &datapb.GroupChangeReq{
-			GroupInfo:info,
-			Reason:datapb.CREATE_GROUP,
+			GroupInfo: info,
+			Reason:    datapb.CREATE_GROUP,
 		}
 		// TODO(cholerae): handle error carefully, free node maybe down
 		_, err := client.GroupChange(context.Background(), groupReq)
@@ -86,11 +87,11 @@ func (s *Server) createGroupInternal(addrs []string, groupID string) (*configpb.
 	newGroup := &configpb.GroupInfo{
 		GroupInfo: configpb.ConfigNo{
 			GroupId: string(groupID),
-			Term: 0,
+			Term:    0,
 		},
-		Primary: addrs[0],
+		Primary:     addrs[0],
 		Secondaries: addrs[1:],
-		Learners: nil,
+		Learners:    nil,
 	}
 	if err := s.sendCreateGroup(addrs[0:s.cfg.ReplicaNum], newGroup); err != nil {
 		return nil, errors.Trace(err)
@@ -133,12 +134,12 @@ func mergeGroups(groups []*configpb.GroupInfo) map[string]int {
 }
 
 func lowestNodesFromMap(m map[string]int, limit int) []string {
-	s := make([]struct{
+	s := make([]struct {
 		Addr string
 		Load int
 	}, 0, len(m))
 	for k, v := range m {
-		s = append(s, struct{
+		s = append(s, struct {
 			Addr string
 			Load int
 		}{
@@ -146,7 +147,7 @@ func lowestNodesFromMap(m map[string]int, limit int) []string {
 			Load: v,
 		})
 	}
-	sort.Slice(s, func (i, j int) bool {
+	sort.Slice(s, func(i, j int) bool {
 		return s[i].Load < s[j].Load
 	})
 	if limit > len(s) {
@@ -184,10 +185,10 @@ func (s *Server) selectLowLoadedNodesExceptGroups(n int, excepts []*configpb.Gro
 	}
 
 	nodes := mergeGroups(groups)
-	if len(nodes) + len(freeNodes) < n {
+	if len(nodes)+len(freeNodes) < n {
 		log.Warnf("No enough nodes! expect %d nodes, get %d nodes", n, len(nodes)+len(freeNodes))
 	}
-	chosen := lowestNodesFromMap(nodes, n - len(freeNodes))
+	chosen := lowestNodesFromMap(nodes, n-len(freeNodes))
 	log.Debugf("choose from non-free nodes: %v", chosen)
 	return append(freeNodes, chosen...), nil
 }
@@ -216,8 +217,13 @@ func (s *Server) CreateGroup(ctx context.Context, req *metapb.CreateGroupReq) (*
 }
 
 func (s *Server) Join(ctx context.Context, req *metapb.JoinReq) (*metapb.JoinResp, error) {
+	// register new node
+	if err := s.kv.Save(dnEtcdPathPrefix+req.Address, req.Address); err != nil {
+		return nil, errors.Annotatef(err, "%s register to etcd failed", req.Address)
+	}
+	// register new node to free node list
 	if err := s.kv.SaveFreeNode(req.Address); err != nil {
-		return nil, errors.Annotatef(err, "%s join failed", req.Address)
+		return nil, errors.Annotatef(err, "%s register to free node list failed", req.Address)
 	}
 	ch := make(chan struct{})
 	s.heartbeatMu.Lock()
@@ -283,7 +289,7 @@ func removeStringFromSlice(x string, slice []string) []string {
 func removeNodeAndAddLearner(info *configpb.GroupInfo, addr string, learner string) (*configpb.GroupInfo, error) {
 	ret := &configpb.GroupInfo{}
 	ret.GroupInfo.GroupId = info.GroupInfo.GroupId
-	ret.GroupInfo.Term = info.GroupInfo.Term+1
+	ret.GroupInfo.Term = info.GroupInfo.Term + 1
 	if info.Primary == addr {
 		if len(info.Secondaries) == 0 {
 			log.Errorf("primary and all secondaries of group %s down", info.GroupInfo.GroupId)
@@ -311,6 +317,14 @@ func removeNodeAndAddLearner(info *configpb.GroupInfo, addr string, learner stri
 }
 
 func (s *Server) removeNode(addr string) error {
+	if err := s.kv.Delete(dnEtcdPathPrefix + addr); err != nil {
+		log.Errorf("deregister down node %s from etcd failed: %v", err)
+		return errors.Trace(err)
+	}
+	if err := s.kv.DeleteFreeNode(addr); err != nil {
+		// down node may and may not be a free node
+		log.Debugf("remove free node %s failed: %v", err)
+	}
 	infos, err := s.kv.LoadGroupInfos()
 	if err != nil {
 		return errors.Trace(err)
@@ -347,7 +361,7 @@ func (s *Server) removeNode(addr string) error {
 	return nil
 }
 
-func (s *Server) Heartbeat(ctx context.Context,req *metapb.HeartbeatReq) (*metapb.HeartbeatResp, error) {
+func (s *Server) Heartbeat(ctx context.Context, req *metapb.HeartbeatReq) (*metapb.HeartbeatResp, error) {
 	s.heartbeatMu.Lock()
 	ch, ok := s.heartbeatChan[req.Addr]
 	s.heartbeatMu.Unlock()

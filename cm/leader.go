@@ -7,14 +7,18 @@ import (
 	"github.com/coreos/etcd/clientv3"
 	log "github.com/sirupsen/logrus"
 
+	"net/http"
+
+	"github.com/choleraehyq/asuka/pb/datapb"
 	"github.com/juju/errors"
 )
 
 const (
 	leaderLeaseTTL     time.Duration = 6
-	asukaPathPrefix = "/asuka/"
-	cmEtcdPathPrefix         = asukaPathPrefix + "cm/"
-	leaderElectionPath       = cmEtcdPathPrefix + "election"
+	asukaPathPrefix                  = "/asuka/"
+	cmEtcdPathPrefix                 = asukaPathPrefix + "cm/"
+	dnEtcdPathPrefix                 = asukaPathPrefix + "dn/"
+	leaderElectionPath               = cmEtcdPathPrefix + "election"
 )
 
 func (s *Server) startLeaderLoop() {
@@ -34,7 +38,7 @@ func (s *Server) leaderLoop() {
 	lease, err := s.client.Grant(s.leaderLoopCtx, int64(leaderLeaseTTL))
 	s.client.KeepAliveOnce(s.leaderLoopCtx, lease.ID)
 
-	_, err = s.client.Put(s.leaderLoopCtx, cmEtcdPathPrefix+s.cfg.RpcAddr, "", clientv3.WithLease(lease.ID))
+	_, err = s.client.Put(s.leaderLoopCtx, cmEtcdPathPrefix+s.cfg.RpcAddr, "http://" + s.cfg.RpcAddr, clientv3.WithLease(lease.ID))
 	if err != nil {
 		log.Fatalf("register self rpc address failed: %v\n", err)
 	}
@@ -49,8 +53,50 @@ func (s *Server) leaderLoop() {
 
 		time.Sleep(leaderLeaseTTL / 2 * time.Second)
 
-		if err := s.compaignLeader(lease.ID); err != nil {
+		isNewLeader, err := s.compaignLeader(lease.ID)
+		if err != nil {
 			log.Debugf("campaign leader failed: %v\n", err)
+		}
+		if isNewLeader {
+			dataNodes, err := s.getDataNodes()
+			if err != nil {
+				log.Errorf("get data node list from etcd failed: %v", err)
+				continue
+			}
+			metaNodes, err := s.getMetaNodes()
+			req := &datapb.MetaServerChangeReq{
+				Primary:     "http://" + s.cfg.RpcAddr,
+				NewMetaList: metaNodes,
+			}
+			for _, dataNode := range dataNodes {
+				client := datapb.NewDataServiceProtobufClient(dataNode, &http.Client{})
+				if _, err := client.MetaServerChange(context.Background(), req); err != nil {
+					log.Errorf("MetaServerChange data node %s failed: %v", dataNode, err)
+				}
+				// like join
+				ch := make(chan struct{})
+				s.heartbeatMu.Lock()
+				if _, ok := s.heartbeatChan[dataNode]; ok {
+					s.heartbeatMu.Unlock()
+					continue
+				}
+				s.heartbeatChan[dataNode] = ch
+				s.heartbeatMu.Unlock()
+				go func(addr string, ch <-chan struct{}) {
+					for {
+						select {
+						case <-s.stopC:
+							return
+						case <-ch:
+							break
+						case <-time.After(checkHeartbeatInterval):
+							log.Errorf("node %s heartbeat timeout!", addr)
+							s.heartbeatTimeout <- addr
+							return
+						}
+					}
+				}(dataNode, ch)
+			}
 		}
 		leader, err := s.getLeader()
 		if err != nil {
@@ -61,12 +107,17 @@ func (s *Server) leaderLoop() {
 	}
 }
 
-func (s *Server) compaignLeader(lease clientv3.LeaseID) error {
+// true means compaignLeader to new leader
+func (s *Server) compaignLeader(lease clientv3.LeaseID) (bool, error) {
 	txn := s.txn().If(clientv3.Compare(clientv3.Version(leaderElectionPath), "=", 0)).Then(clientv3.OpPut(leaderElectionPath, s.leaderValue, clientv3.WithLease(lease)))
-	if _, err := txn.Commit(); err != nil {
-		return errors.Trace(err)
+	txnResp, err := txn.Commit()
+	if err != nil {
+		return false, errors.Trace(err)
 	}
-	return nil
+	if txnResp.Succeeded {
+		return true, nil
+	}
+	return false, nil
 }
 
 func (s *Server) IsLeader() bool {
@@ -80,6 +131,14 @@ func (s *Server) getLeader() (string, error) {
 		return "", errors.Trace(err)
 	}
 	return string(resp.Kvs[0].Value), nil
+}
+
+func (s *Server) getDataNodes() ([]string, error) {
+	return s.kv.LoadWithPrefix(dnEtcdPathPrefix)
+}
+
+func (s *Server) getMetaNodes() ([]string, error) {
+	return s.kv.LoadWithPrefix(cmEtcdPathPrefix)
 }
 
 func (s *Server) leaderCmp() clientv3.Cmp {

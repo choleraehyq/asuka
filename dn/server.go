@@ -1,18 +1,19 @@
 package dn
 
 import (
-	"net/http"
-	"sync/atomic"
-	log "github.com/sirupsen/logrus"
-	"github.com/choleraehyq/asuka/pb/metapb"
 	"context"
-	"time"
-	"sync"
+	"net/http"
+	"os"
 	"path"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/choleraehyq/asuka/pb/configpb"
+	"github.com/choleraehyq/asuka/pb/metapb"
 	"github.com/choleraehyq/asuka/storage/badger"
 	"github.com/juju/errors"
-	"github.com/choleraehyq/asuka/pb/configpb"
-	"os"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -32,18 +33,18 @@ type Server struct {
 	instances map[string]*instance
 
 	// metaserver addresses
-	metas []string
+	metas        []string
 	primary_meta string
-	rw sync.RWMutex
+	rw           sync.RWMutex
 }
 
 // NewServer create a pd server
 func NewServer(cfg *Cfg) *Server {
 	return &Server{
-		cfg:         cfg,
-		isServing: 0,
-		stopC: make(chan struct{}),
-		instances: make(map[string]*instance),
+		cfg:          cfg,
+		isServing:    0,
+		stopC:        make(chan struct{}),
+		instances:    make(map[string]*instance),
 		primary_meta: cfg.CMAddr,
 	}
 }
@@ -51,6 +52,7 @@ func NewServer(cfg *Cfg) *Server {
 func (s *Server) joinCluster() error {
 	client := metapb.NewMetaServiceProtobufClient(s.primary_meta, &http.Client{})
 	req := &metapb.JoinReq{
+		// already have http prefix
 		Address: s.cfg.RpcAddr,
 	}
 	if _, err := client.Join(context.Background(), req); err != nil {
@@ -68,7 +70,7 @@ func (s *Server) Start() error {
 		return errors.Trace(err)
 	}
 
-	go func () {
+	go func() {
 		ticker := time.NewTicker(HeartbeatInterval)
 		defer ticker.Stop()
 		for {
@@ -141,7 +143,7 @@ func (s *Server) createInstance(groupID string, info *configpb.GroupInfo) (*inst
 	s.rw.Lock()
 	defer s.rw.Unlock()
 	dir := s.cfg.DataDir
-	dbpath := path.Join(dir, s.cfg.RpcAddr + groupID)
+	dbpath := path.Join(dir, s.cfg.RpcAddr+groupID)
 	if err := os.MkdirAll(dbpath, 0777); err != nil {
 		return nil, errors.Annotatef(err, "create dbpath %s failed", dbpath)
 	}
@@ -150,8 +152,8 @@ func (s *Server) createInstance(groupID string, info *configpb.GroupInfo) (*inst
 		return nil, errors.Annotatef(err, "create engine at path %s failed", dbpath)
 	}
 	ins := &instance{
-		engine : eng,
-		path: dbpath,
+		engine: eng,
+		path:   dbpath,
 	}
 	ins.initFromGroupInfo(info, s.cfg.RpcAddr)
 	// if creating new group, the term of new instance should be 0

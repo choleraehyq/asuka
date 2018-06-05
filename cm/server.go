@@ -11,13 +11,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/choleraehyq/asuka/dn"
 	"github.com/coreos/etcd/clientv3"
 	log "github.com/sirupsen/logrus"
-	"github.com/choleraehyq/asuka/dn"
 )
 
 const (
-	etcdDialTimeout = 3 * time.Second
+	etcdDialTimeout        = 3 * time.Second
 	checkHeartbeatInterval = 2 * dn.HeartbeatInterval
 )
 
@@ -26,18 +26,18 @@ type Server struct {
 	cfg *Cfg
 
 	isServing int64
-	stopC chan struct{}
+	stopC     chan struct{}
 
 	client *clientv3.Client
 
 	// rpc fields
 	rpcServer *http.Server
-	kv *etcdKVBase
+	kv        *etcdKVBase
 
 	// heartbeat timeout node address
 	heartbeatTimeout chan string
-	heartbeatMu sync.Mutex
-	heartbeatChan map[string]chan struct{}
+	heartbeatMu      sync.Mutex
+	heartbeatChan    map[string]chan struct{}
 
 	leaderValue      string
 	leaderLoopCtx    context.Context
@@ -50,10 +50,10 @@ func NewServer(cfg *Cfg) *Server {
 	return &Server{
 		cfg:         cfg,
 		leaderValue: cfg.RpcAddr,
-		stopC: make(chan struct{}),
+		stopC:       make(chan struct{}),
 		// TODO(cholerae): use a more appropriate size
 		heartbeatTimeout: make(chan string, 100),
-		heartbeatChan: make(map[string]chan struct{}),
+		heartbeatChan:    make(map[string]chan struct{}),
 	}
 }
 

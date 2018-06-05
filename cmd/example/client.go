@@ -1,22 +1,23 @@
 package main
 
 import (
-	"flag"
-	"log"
-	"github.com/juju/errors"
-	"fmt"
-	"github.com/choleraehyq/asuka/pb/metapb"
-	"net/http"
 	"context"
+	"flag"
+	"fmt"
+	"log"
+	"net/http"
+
 	"github.com/choleraehyq/asuka/pb/datapb"
+	"github.com/choleraehyq/asuka/pb/metapb"
 	"github.com/choleraehyq/asuka/pb/storagepb"
+	"github.com/juju/errors"
 )
 
 var (
 	cmaddr = flag.String("cmaddr", "http://127.0.0.1:9876", "primary config manager listening port")
-	group = flag.String("group", "", "group name")
-	key = flag.String("key", "", "set or get key")
-	value = flag.String("value", "", "set value")
+	group  = flag.String("group", "", "group name")
+	key    = flag.String("key", "", "set or get key")
+	value  = flag.String("value", "", "set value")
 	method = flag.String("method", "", "want do you want to do: set, get, create_group")
 )
 
@@ -59,20 +60,20 @@ func getLocationAndQuery() error {
 		req := &datapb.SetReq{
 			GroupId: *group,
 			Pair: storagepb.KVPair{
-				Key: []byte(*key),
+				Key:   []byte(*key),
 				Value: []byte(*value),
 			},
- 		}
- 		if _, err := dnClient.Set(context.Background(), req); err != nil {
- 			log.Printf("set key %s value %s in group %s failed: %v", *key, *value, *group, err)
- 			return err
+		}
+		if _, err := dnClient.Set(context.Background(), req); err != nil {
+			log.Printf("set key %s value %s in group %s failed: %v", *key, *value, *group, err)
+			return err
 		}
 		log.Printf("set key %s value %s in group %s successfully", *key, *value, *group)
 	} else {
 		// get
 		req := &datapb.GetReq{
 			GroupId: *group,
-			Key: []byte(*key),
+			Key:     []byte(*key),
 		}
 		resp, err := dnClient.Get(context.Background(), req)
 		if err != nil {

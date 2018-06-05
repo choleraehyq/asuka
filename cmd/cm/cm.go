@@ -6,17 +6,17 @@ import (
 	"os/signal"
 	"syscall"
 
-	log "github.com/sirupsen/logrus"
 	"github.com/choleraehyq/asuka/cm"
 	"github.com/choleraehyq/asuka/utils"
+	log "github.com/sirupsen/logrus"
 )
 
 var (
-	addrRPC                     = flag.String("rpc-addr", "127.0.0.1:9876", "addr rpc service listening")
-	addrEtcd                  = flag.String("etcd-addr", "127.0.0.1:2379", "etcd cluster address, separate with comma")
+	addrRPC       = flag.String("rpc-addr", "127.0.0.1:9876", "addr rpc service listening")
+	addrEtcd      = flag.String("etcd-addr", "127.0.0.1:2379", "etcd cluster address, separate with comma")
 	replicaNumber = flag.Int("replica-number", 2, "replica number of each PacificA instance")
-	logFile                     = flag.String("log-file", "", "The external log file. Default log to console.")
-	logLevel                    = flag.String("log-level", "debug", "The log level")
+	logFile       = flag.String("log-file", "", "The external log file. Default log to console.")
+	logLevel      = flag.String("log-level", "debug", "The log level")
 )
 
 func main() {
@@ -74,8 +74,8 @@ func parseCfg() *cm.Cfg {
 	}
 
 	return &cm.Cfg{
-		RpcAddr: *addrRPC,
-		EtcdAddr: *addrEtcd,
+		RpcAddr:    *addrRPC,
+		EtcdAddr:   *addrEtcd,
 		ReplicaNum: *replicaNumber,
 	}
 }

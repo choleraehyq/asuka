@@ -5,4 +5,3 @@ type Cfg struct {
 	DataDir string
 	CMAddr  string
 }
-

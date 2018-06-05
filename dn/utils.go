@@ -1,7 +1,7 @@
 package dn
 
 const (
-	logKeyPrefix byte = 'l'
+	logKeyPrefix  byte = 'l'
 	dataKeyPrefix byte = 'd'
 )
 
