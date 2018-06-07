@@ -248,7 +248,7 @@ func (s *Server) syncLog(selfAddr string, ins *instance) {
 		log.Errorf("upgradeLearner node %s at cm %s failed: %v", upgradeReq.Addr, primary, err)
 	}
 	if !atomic.CompareAndSwapInt32(&ins.flag, 1, 0) {
-		log.Error("ins.flag has been changed by other goroutine")
+		log.Error("ins.flag has been changed by other goroutines")
 	}
 	return
 }
